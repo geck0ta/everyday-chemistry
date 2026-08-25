@@ -187,7 +187,11 @@ export default function Simulation() {
     const result = added === "asam"
       ? addAcidToBuffer({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase, molH: mol })
       : addBaseToBuffer({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase, molOh: mol });
-    const curve = bufferCurve({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase, maxMol: Math.max(bufAcid * 1.5, 0.05) });
+    const curve = bufferCurve({
+      system: bufSystem, acidConc: bufAcid, baseConc: bufBase,
+      maxMol: Math.max(bufAcid * 1.5, 0.05),
+      titrant: added === "asam" ? "H" : "OH",
+    });
     return { initial, result, curve };
   }, [bufSystem, bufAcid, bufBase, added, mol]);
 
@@ -667,7 +671,9 @@ function BufferVisual({ system, curve, currentPh, mol, added }: {
         <text x={W - 16} y={sy(system.pka) - 5} textAnchor="end" fontSize="8.5" fill="#34e0a1" fontFamily="monospace">pKa {system.pka}</text>
         <line x1={PAD} y1={H - PAD} x2={W - 12} y2={H - PAD} stroke="var(--muted)" strokeWidth="1" />
         <line x1={PAD} y1="14" x2={PAD} y2={H - PAD} stroke="var(--muted)" strokeWidth="1" />
-        <text x={(W + PAD) / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">mol OH⁻ ditambahkan</text>
+        <text x={(W + PAD) / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">
+          {added === "asam" ? "mol H⁺ ditambahkan (pH turun)" : "mol OH⁻ ditambahkan (pH naik)"}
+        </text>
         <text x="12" y={(H - PAD + 20) / 2} fontSize="10" fill="var(--muted)" transform={`rotate(-90 12 ${(H - PAD + 20) / 2})`} textAnchor="middle">pH</text>
         <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round"
           style={{ filter: "drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 35%, transparent))" }} />
@@ -676,7 +682,9 @@ function BufferVisual({ system, curve, currentPh, mol, added }: {
         </circle>
       </svg>
       <p className="mt-1 text-center text-[11px] text-[var(--muted)]">
-        Daerah datar di pKa = zona kerja penyangga · titik merah = kondisi sekarang
+        {added === "asam"
+          ? "Kurva turun — H⁻ dineetralkan basa konjugasi, pH tertahan di dekat pKa"
+          : "Daerah datar di pKa = zona kerja penyangga"} · titik merah = kondisi sekarang
       </p>
     </div>
   );
@@ -724,19 +732,15 @@ function VoltaVisual({ anode, cathode, eCell, electronFlow, spontan }: {
           fill={spontan ? "#34e0a1" : "var(--muted)"} fontFamily="monospace">
           {Math.abs(eCell).toFixed(2)}V
         </text>
-        {/* elektron mengalir anoda → katoda (kiri ke kanan jika anoda di kiri) */}
-        {spontan && [0, 1, 2].map((i) => {
-          const fromX = 70, toX = 140;
-          const rev = anode.name > cathode.name; // urutan tampilan stabil untuk arah aliran elektron
-          const x1 = rev ? 180 : fromX, x2 = rev ? 250 : toX;
-          return (
-            <circle key={i} r="3" fill="#e05c7a">
-              <animate attributeName="cx" values={`${x1};${x2}`} dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
-              <animate attributeName="cy" values={`${wireY};${wireY}`} dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
-            </circle>
-          );
-        })}
+        {/* elektron mengalir anoda → katoda; anoda selalu digambar di gelas kiri,
+            jadi arah animasinya selalu kiri → kanan melewati voltmeter */}
+        {spontan && [0, 1, 2].map((i) => (
+          <circle key={i} r="3" fill="#e05c7a">
+            <animate attributeName="cx" values="70;140" dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+            <animate attributeName="cy" values={`${wireY};${wireY}`} dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
         {/* gelas kiri (anoda) */}
         <path d="M40 60 L44 170 Q45 176 52 176 L108 176 Q115 176 116 170 L120 60 Z" fill="none" stroke="var(--muted)" strokeWidth="1.6" />
         <rect x={47} y={90} width={66} height={82} rx={3} fill={anode.solutionColor} opacity="0.4" />

@@ -130,3 +130,23 @@ describe("BUFFER_SYSTEMS", () => {
     expect(blood.pka).toBeLessThan(7);
   });
 });
+
+describe("bufferCurve titran asam (titrant H)", () => {
+  it("pH turun monoton terhadap mol H⁻ dan berakhir sangat asam", () => {
+    const curve = bufferCurve({ system: ACETATE, acidConc: 0.1, baseConc: 0.1, maxMol: 0.15, titrant: "H" });
+    expect(curve.length).toBeGreaterThan(20);
+    for (let i = 1; i < curve.length; i++) {
+      expect(curve[i].ph).toBeLessThanOrEqual(curve[i - 1].ph);
+    }
+    const last = curve[curve.length - 1];
+    expect(last.phase).toBe("asam-berlebih");
+    expect(last.ph).toBeLessThan(2);
+  });
+
+  it("mulai tepat di pKa dan daerah penyangga tetap di atas pH 1", () => {
+    const curve = bufferCurve({ system: ACETATE, acidConc: 0.1, baseConc: 0.1, maxMol: 0.15, titrant: "H" });
+    expect(curve[0].ph).toBeCloseTo(ACETATE.pka, 2);
+    const flat = curve.filter((p) => p.phase === "penyangga");
+    for (const p of flat) expect(p.ph).toBeGreaterThan(1);
+  });
+});

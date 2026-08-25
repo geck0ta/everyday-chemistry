@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   env: {
     NEXT_PUBLIC_BASE_PATH: isPages ? `/${repo}` : "",
+    NEXT_PUBLIC_REPO: repo,
   },
 };
 

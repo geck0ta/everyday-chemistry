@@ -109,13 +109,13 @@ export function addBaseToBuffer(params: {
 export interface BufferPoint {
   mol: number;       // kumulatif OH⁻ yang ditambahkan
   ph: number;
-  phase: "penyangga" | "ekivalen" | "basa-berlebih";
+  phase: "penyangga" | "ekivalen" | "basa-berlebih" | "asam-berlebih";
 }
 
 /**
- * Kurva titrasi buffer terhadap basakuat:
- * datar di sekitar pKa → melompat di ekivalen → mendatar lagi di daerah basakuat.
- * Asumsi volume total 1 L dan konsentrasi NaOH tinggi (efek dilusi diabaikan).
+ * Kurva titrasi buffer terhadap titran kuat (NaOH atau HCl):
+ * datar di sekitar pKa → melompat di ekivalen → mendatar lagi di daerah berlebih.
+ * Asumsi volume total 1 L dan konsentrasi titran tinggi (efek dilusi diabaikan).
  */
 export function bufferCurve(params: {
   system: BufferSystem;
@@ -123,32 +123,50 @@ export function bufferCurve(params: {
   baseConc: number;
   maxMol: number;
   step?: number;
+  /** jenis titran: "OH" = basakuat (pH naik), "H" = asam kuat (pH turun). Default "OH". */
+  titrant?: "H" | "OH";
 }): BufferPoint[] {
   const { system, acidConc, baseConc, maxMol } = params;
   const step = params.step ?? maxMol / 100;
+  const titrant = params.titrant ?? "OH";
   const pts: BufferPoint[] = [];
-  const eqMol = acidConc;
+  const eqMol = titrant === "OH" ? acidConc : baseConc;
+  // Perkiraan pH titik ekivalen — dipakai juga sebagai batas fisis daerah penyangga:
+  // pendekatan HH tidak valid saat rasio ekstrem (mendekati ekivalen); pH sebenarnya
+  // mendekati nilai ekivalen secara asimtotik, bukan menembusnya.
+  const eqPhOH = 14 - 0.5 * (14 - system.pka - Math.log10(Math.max(baseConc + acidConc, 1e-12)));
+  const eqPhH = 0.5 * (system.pka - Math.log10(Math.max(acidConc + baseConc, 1e-12)));
 
   for (let mol = 0; mol <= maxMol + step / 2; mol += step) {
     let ph: number;
     let phase: BufferPoint["phase"];
     if (mol < eqMol - 1e-9) {
-      // masih di dalam kapasitas: OH⁻ mengubah asam jadi basa
-      const newAcid = acidConc - mol;
-      const newBase = baseConc + mol;
-      ph = bufferPh({ system, acidConc: newAcid, baseConc: newBase }).ph;
+      // masih di dalam kapasitas: titran mengubah salah satu komponen jadi pasangannya
+      const newAcid = titrant === "OH" ? acidConc - mol : acidConc + mol;
+      const newBase = titrant === "OH" ? baseConc + mol : baseConc - mol;
+      const hhPh = bufferPh({ system, acidConc: newAcid, baseConc: newBase }).ph;
+      // clamp ke batas ekivalen agar kurva monoton (HH meleset di rasio ekstrem)
+      ph = titrant === "OH" ? Math.min(hhPh, eqPhOH) : Math.max(hhPh, eqPhH);
       phase = "penyangga";
     } else if (mol <= eqMol + 2 * step) {
-      // titik ekivalen: semua asam sudah jadi basa
-      const conc = (baseConc + eqMol) / 1;
-      // pH ditentukan hidrolisis basa konjugasi: pOH = ½(pKw − pKa − log c)
-      ph = 14 - 0.5 * (14 - system.pka - Math.log10(conc));
-      phase = "ekivalen";
-    } else {
+      // titik ekivalen
+      if (titrant === "OH") {
+        // semua asam sudah jadi basa konjugasi → hidrolisis basa
+        ph = eqPhOH;
+        phase = "ekivalen";
+      } else {
+        // semua basa sudah jadi asam → pH asam lemah murni: ½(pKa − log c)
+        ph = eqPhH;
+        phase = "ekivalen";
+      }
+    } else if (titrant === "OH") {
       // basakuat berlebih
-      const ohExcess = mol - eqMol;
-      ph = 14 + Math.log10(Math.max(ohExcess / 1, 1e-14));
+      ph = 14 + Math.log10(Math.max((mol - eqMol) / 1, 1e-14));
       phase = "basa-berlebih";
+    } else {
+      // asam kuat berlebih
+      ph = -Math.log10(Math.max((mol - eqMol) / 1, 1e-14));
+      phase = "asam-berlebih";
     }
     pts.push({
       mol: Math.round(mol * 10000) / 10000,

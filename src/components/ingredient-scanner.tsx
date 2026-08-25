@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
-import { Camera, ClipboardPaste, Loader2, ScanText, Search, TriangleAlert, X } from "lucide-react";
+import { Camera, ClipboardPaste, Loader2, Plus, ScanText, Search, TriangleAlert, X } from "lucide-react";
 import { identifyIngredients, linkedSubstance } from "@/lib/identify";
 import type { MatchResult } from "@/lib/identify";
 import Formula from "@/components/formula";
@@ -76,9 +76,30 @@ function ResultCard({ r }: { r: MatchResult }) {
           )}
         </>
       ) : (
-        <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
-          Belum ada di knowledge base kami (baru ±60 bahan umum). Coba ketik ulang bahan ini kalau hasil OCR kurang tepat.
-        </p>
+        <>
+          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
+            Belum ada di knowledge base kami (baru ±65 bahan umum). Coba ketik ulang
+            bahan ini kalau hasil OCR kurang tepat.
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const raw = encodeURIComponent(r.raw);
+              const subject = encodeURIComponent(`Permintaan tambahan bahan: ${r.raw}`);
+              window.location.href = `mailto:hello@example.com?subject=${subject}&body=Saya menemukan bahan ini pada label produk:%0A%0A${raw}%0A%0ASilakan tambahkan ke knowledge base Everyday Chemistry.`;
+            }}
+            className="mt-2.5"
+          >
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--accent)]"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <Plus size={13} strokeWidth={1.75} />
+              Minta tambah bahan ini
+            </button>
+          </form>
+        </>
       )}
     </div>
   );
