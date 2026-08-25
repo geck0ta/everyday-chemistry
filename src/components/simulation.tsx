@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FlaskConical, Atom, Thermometer, Shield, Zap, Droplet, TestTube } from "lucide-react";
+import { FlaskConical, Atom, Thermometer, Shield, Zap } from "lucide-react";
 import {
   titrationCurve, equilibriumConcentrations, reactionRate,
   type TitrationPoint,
@@ -11,7 +11,6 @@ import {
   type BufferSystem,
 } from "@/lib/buffer-sim";
 import { ELECTRODES, voltaCell, type Electrode } from "@/lib/volta-sim";
-import ErrorBoundary from "@/components/error-boundary";
 
 /* ---------- Grafik SVG dengan animasi menggambar ---------- */
 function LineChart({ data, xLabel, yLabel, marker, markerLabel, color = "var(--accent)", keyAnim }: {
@@ -111,17 +110,14 @@ function Slider({ label, value, min, max, step, unit, onChange }: {
   );
 }
 
-type SimMode = "titration" | "buffer" | "volta" | "equilibrium" | "rate" | "ph-lab" | "electrolysis-lab" | "metal-lab";
+type SimMode = "titration" | "buffer" | "volta" | "equilibrium" | "rate";
 
-const MODES: { id: SimMode; label: string; icon: typeof FlaskConical; group: "sim" | "lab" }[] = [
-  { id: "titration", label: "Titrasi Asam–Basa", icon: FlaskConical, group: "sim" },
-  { id: "buffer", label: "Larutan Penyangga", icon: Shield, group: "sim" },
-  { id: "volta", label: "Sel Volta", icon: Zap, group: "sim" },
-  { id: "equilibrium", label: "Kesetimbangan", icon: Atom, group: "sim" },
-  { id: "rate", label: "Laju Reaksi & Suhu", icon: Thermometer, group: "sim" },
-  { id: "ph-lab", label: "Indikator pH", icon: Droplet, group: "lab" },
-  { id: "electrolysis-lab", label: "Elektrolisis Air", icon: Zap, group: "lab" },
-  { id: "metal-lab", label: "Logam + Asam", icon: TestTube, group: "lab" },
+const MODES: { id: SimMode; label: string; icon: typeof FlaskConical }[] = [
+  { id: "titration", label: "Titrasi Asam–Basa", icon: FlaskConical },
+  { id: "buffer", label: "Larutan Penyangga", icon: Shield },
+  { id: "volta", label: "Sel Volta", icon: Zap },
+  { id: "equilibrium", label: "Kesetimbangan", icon: Atom },
+  { id: "rate", label: "Laju Reaksi & Suhu", icon: Thermometer },
 ];
 
 /* warna indikator universal berdasarkan pH */
@@ -133,317 +129,15 @@ function phColor(ph: number): string {
   return "#9d6fd6";                   // ungu — basa kuat
 }
 
-/** Labu titrasi dengan larutan berubah warna sesuai pH */
-function TitrationFlask({ currentPh, addedVol, maxVol }: {
-  currentPh: number;
-  addedVol: number;
-  maxVol: number;
-}) {
-  const color = phColor(currentPh);
-  const fillPct = Math.min((addedVol / maxVol) * 100, 85);
-  
-  return (
-    <div className="mb-4 flex justify-center">
-      <svg viewBox="0 0 160 200" className="h-40 w-auto">
-        {/* labu kontur */}
-        <path
-          d="M 50 20 L 55 60 L 45 80 Q 40 100 40 120 Q 40 160 80 170 Q 120 160 120 120 Q 120 100 115 80 L 105 60 L 110 20 Z"
-          fill="none"
-          stroke="var(--muted)"
-          strokeWidth="1.5"
-        />
-        {/* cairan dalam labu dengan hue pH */}
-        <path
-          d="M 50 60 L 45 80 Q 40 100 40 120 Q 40 160 80 170 Q 120 160 120 120 Q 120 100 115 80 L 105 60 Z"
-          fill={color}
-          opacity="0.5"
-          style={{ transition: "fill 0.5s ease, opacity 0.5s ease" }}
-        />
-        {/* garis pengisi larutan */}
-        <line
-          x1="45"
-          y1={70 + (85 - fillPct) * 1.05}
-          x2="115"
-          y2={70 + (85 - fillPct) * 1.05}
-          stroke={color}
-          strokeWidth="1.5"
-          opacity="0.7"
-          style={{ transition: "y1 0.3s, y2 0.3s, stroke 0.5s ease" }}
-        />
-        {/* label pH */}
-        <text
-          x="80"
-          y="140"
-          textAnchor="middle"
-          fontSize="18"
-          fontWeight="bold"
-          fill={color}
-          fontFamily="monospace"
-          style={{ transition: "fill 0.5s ease" }}
-        >
-          {currentPh.toFixed(1)}
-        </text>
-      </svg>
-    </div>
-  );
-}
-
-/* ============ LAB 1: Indikator pH ============ */
-function PhMixLab() {
-  const [acidMl, setAcidMl] = useState(10);
-  const [baseMl, setBaseMl] = useState(0);
-  const CONC = 0.1;
-
-  const result = useMemo(() => {
-    const hMol = (acidMl / 1000) * CONC;
-    const ohMol = (baseMl / 1000) * CONC;
-    const totalVol = (acidMl + baseMl) / 1000;
-    if (totalVol === 0) return { ph: 7, excess: "neutral" as const };
-
-    const diff = hMol - ohMol;
-    let ph: number, excess: "acid" | "base" | "neutral";
-    if (Math.abs(diff) < 1e-12) { ph = 7; excess = "neutral"; }
-    else if (diff > 0) { ph = -Math.log10(diff / totalVol); excess = "acid"; }
-    else { ph = 14 + Math.log10(-diff / totalVol); excess = "base"; }
-    return { ph: Math.max(0, Math.min(14, Math.round(ph * 100) / 100)), excess };
-  }, [acidMl, baseMl]);
-
-  const color = phColor(result.ph);
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-      <div className="space-y-5">
-        <h3 className="text-sm font-semibold">Campur larutan</h3>
-        <Slider label="HCl 0,1 M" value={acidMl} min={0} max={30} step={1} unit="mL" onChange={setAcidMl} />
-        <Slider label="NaOH 0,1 M" value={baseMl} min={0} max={30} step={1} unit="mL" onChange={setBaseMl} />
-      </div>
-
-      <div>
-        {/* gelas besar */}
-        <svg viewBox="0 0 320 160" className="w-full" role="img" aria-label="Gelas kimia berisi campuran dengan warna sesuai pH">
-          {/* gelas */}
-          <path d="M100 20 L108 138 Q109 144 116 144 L204 144 Q211 144 212 138 L220 20"
-            fill="none" stroke="var(--muted)" strokeWidth="2" />
-          {/* cairan — ketinggian proporsional total volume */}
-          {(() => {
-            const h = 20 + ((acidMl + baseMl) / 60) * 90;
-            return (
-              <path
-                d={`M ${104 - (20 - h) * 0.08} ${144 - h} L ${108 - (20 - h) * 0.05} 136 Q 109 140 116 140 L 204 140 Q 211 140 212 136 L ${216 + (20 - h) * 0.05} ${144 - h} Z`}
-                fill={color}
-                opacity="0.55"
-                style={{ transition: "all .4s ease" }}
-              />
-            );
-          })()}
-          {/* gelembung saat reaksi */}
-          {Math.min(acidMl, baseMl) > 2 && acidMl !== baseMl && [150, 170, 190].map((x, i) => (
-            <circle key={x} cx={x} cy="130" r="2.5" fill={color}>
-              <animate attributeName="cy" values={`130;${144 - 20 - ((acidMl + baseMl) / 60) * 90}`} dur={`${1 + i * 0.3}s`} repeatCount="indefinite" begin={`${i * 0.3}s`} />
-              <animate attributeName="opacity" values="0;0.9;0" dur={`${1 + i * 0.3}s`} repeatCount="indefinite" begin={`${i * 0.3}s`} />
-            </circle>
-          ))}
-          {/* pH meter */}
-          <text x="262" y="70" fontSize="26" fontWeight="bold" fill={color} fontFamily="monospace">
-            {result.ph.toFixed(1)}
-          </text>
-          <text x="262" y="86" fontSize="9" fill="var(--muted)">pH</text>
-        </svg>
-
-        <p className="mt-3 rounded-xl px-4 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
-          {result.excess === "neutral"
-            ? "Netral! Mol H⁺ = mol OH⁻ — netralisasi sempurna."
-            : result.excess === "acid"
-              ? `Asam berlebih ${(Math.abs(acidMl - baseMl)).toFixed(0)} mL — sisa H⁺ menentukan pH.`
-              : `Basa berlebih ${(Math.abs(acidMl - baseMl)).toFixed(0)} mL — sisa OH⁻ menaikkan pH.`}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ============ LAB 2: Elektrolisis Air ============ */
-function ElectrolysisLab() {
-  const [minutes, setMinutes] = useState(5);
-  const [current, setCurrent] = useState(2);
-  const [running, setRunning] = useState(false);
-
-  const FARADAY = 96485;
-  const charge = current * minutes * 60;
-  const eMol = charge / FARADAY;
-  const h2Mol = eMol / 2;
-  const o2Mol = eMol / 4;
-  const h2H = Math.min((h2Mol * 24) * 18, 90);
-  const o2H = h2H / 2;
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-      <div className="space-y-5">
-        <h3 className="text-sm font-semibold">Elektrolisis air</h3>
-        <Slider label="Waktu" value={minutes} min={1} max={20} step={1} unit="menit" onChange={setMinutes} />
-        <Slider label="Arus" value={current} min={1} max={5} step={1} unit="A" onChange={setCurrent} />
-        <button
-          onClick={() => setRunning(!running)}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
-          style={{ background: running ? "var(--accent-soft)" : "var(--accent)", color: running ? "var(--accent)" : "#fff" }}
-        >
-          <Zap size={14} strokeWidth={1.75} fill={running ? "var(--accent)" : "#fff"} />
-          {running ? "Matikan arus" : "Nyalakan arus"}
-        </button>
-        <div className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
-          Muat listrik: <b>{charge.toFixed(0)} C</b> = {eMol.toFixed(4)} mol e⁻<br />
-          H₂: {h2Mol.toFixed(4)} mol · O₂: {o2Mol.toFixed(4)} mol
-        </div>
-      </div>
-
-      <div>
-        <svg viewBox="0 0 320 180" className="w-full" role="img" aria-label="Sel elektrolisis dengan dua tabung gas, H2 dua kali O2">
-          {/* wadah air */}
-          <rect x="40" y="40" width="240" height="120" rx="10" fill="#4aa8bd" opacity="0.12" stroke="var(--muted)" strokeWidth="1.2" />
-          {/* dua tabung uji terbalik */}
-          <rect x="95" y={130 - h2H} width="46" height={h2H} rx="6" fill="#5b8def" opacity="0.45"
-            style={{ transition: "all .5s ease" }} />
-          <rect x="179" y={130 - o2H} width="46" height={o2H} rx="6" fill="#34e0a1" opacity="0.45"
-            style={{ transition: "all .5s ease" }} />
-          {/* elektroda */}
-          <rect x="112" y="118" width="10" height="38" rx="2" fill="var(--muted)" />
-          <rect x="198" y="118" width="10" height="38" rx="2" fill="var(--muted)" />
-          {/* kabel & baterai */}
-          <path d="M117 118 Q117 22 160 22 M203 118 Q203 22 160 22" fill="none" stroke="var(--muted)" strokeWidth="1.5" />
-          <rect x="146" y="14" width="28" height="16" rx="3" fill={running ? "#ffb454" : "var(--border)"}
-            style={{ transition: "background .3s" }} />
-          <text x="160" y="25" textAnchor="middle" fontSize="9" fontWeight="bold"
-            fill={running ? "#000" : "var(--muted)"}>{current}A</text>
-          {/* gelembung saat running */}
-          {running && [112, 122, 197, 205].map((x, i) => (
-            <circle key={x} cx={x + (i % 2) * 4} cy="115" r="2" fill="#bfe3ff">
-              <animate attributeName="cy" values="115;40" dur={`${0.8 + (i % 3) * 0.25}s`} repeatCount="indefinite" begin={`${i * 0.2}s`} />
-              <animate attributeName="opacity" values="0;1;0" dur={`${0.8 + (i % 3) * 0.25}s`} repeatCount="indefinite" begin={`${i * 0.2}s`} />
-            </circle>
-          ))}
-          {/* label gas */}
-          <text x="118" y={124 - h2H - 6} textAnchor="middle" fontSize="10" fill="#5b8def" fontFamily="monospace">H₂</text>
-          <text x="202" y={124 - o2H - 6} textAnchor="middle" fontSize="10" fill="#34e0a1" fontFamily="monospace">O₂</text>
-          {/* label rasio */}
-          <text x="160" y="168" textAnchor="middle" fontSize="9" fill="currentColor" opacity="0.55" fontFamily="monospace">
-            H₂ : O₂ selalu 2 : 1 (hukum Faraday)
-          </text>
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-/* ============ LAB 3: Logam + Asam ============ */
-const METALS = [
-  { id: "Mg", name: "Magnesium", color: "#d4d4d8", reacts: true },
-  { id: "Zn", name: "Seng", color: "#a8b2bd", reacts: true },
-  { id: "Fe", name: "Besi", color: "#8a8f98", reacts: true },
-  { id: "Cu", name: "Tembaga", color: "#c97b4a", reacts: false },
-] as const;
-
-function MetalAcidLab() {
-  const [metal, setMetal] = useState<(typeof METALS)[number]["id"]>("Mg");
-  const [temp, setTemp] = useState(25);
-  const [running, setRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-
-  const spec = METALS.find((m) => m.id === metal)!;
-  const FACTORS: Record<string, number> = { Mg: 5, Zn: 2, Fe: 0.6, Cu: 0 };
-  const factor = FACTORS[metal] ?? 0;
-  const tempFactor = Math.pow(2, (temp - 25) / 10);
-  const rate = factor * tempFactor * 0.02;
-
-  const progress = Math.min(running ? elapsed * rate : 0, 100);
-  const bubblesPerSec = Math.round(rate * 3);
-
-  useMemo(() => {
-    if (!running || !spec.reacts || progress >= 100) return;
-    const iv = setInterval(() => setElapsed((e) => e + 0.1), 100);
-    return () => clearInterval(iv);
-  }, [running, spec.reacts, progress]);
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-      <div className="space-y-5">
-        <h3 className="text-sm font-semibold">Pilih logam & suhu</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {METALS.map((m) => (
-            <button key={m.id}
-              onClick={() => { setMetal(m.id); setRunning(false); setElapsed(0); }}
-              className={`rounded-xl px-3 py-2.5 text-left text-xs transition-all ${
-                metal === m.id ? "" : "glass hover:border-[var(--accent)]/40"
-              }`}
-              style={metal === m.id
-                ? { background: "var(--accent-soft)", border: "1px solid var(--accent)" }
-                : undefined}>
-              <span className="block w-full h-2 rounded-full mb-1.5" style={{ background: m.color }} />
-              <span className={metal === m.id ? "font-semibold text-[var(--accent)]" : ""}>{m.name}</span>
-            </button>
-          ))}
-        </div>
-        <Slider label="Suhu asam" value={temp} min={10} max={80} step={5} unit="°C" onChange={setTemp} />
-        <button
-          onClick={() => { setRunning(true); setElapsed(0); }}
-          disabled={!spec.reacts}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all disabled:opacity-40"
-          style={{ background: "var(--accent)", color: "#fff" }}
-        >
-          <TestTube size={13} strokeWidth={2} /> Masukkan ke asam
-        </button>
-      </div>
-
-      <div>
-        <svg viewBox="0 0 320 180" className="w-full" role="img" aria-label="Tabung reaksi berisi logam dalam asam">
-          <path d="M120 15 L126 155 Q127 162 134 162 L186 162 Q193 162 194 155 L200 15"
-            fill="none" stroke="var(--muted)" strokeWidth="2" />
-          <path d="M125 65 L129 152 Q130 158 135 158 L185 158 Q190 158 191 152 L195 65 Z"
-            fill="#bfe3ff" opacity="0.3" />
-          <rect x="145" y={spec.reacts && running ? 120 - Math.min(progress * 0.4, 30) : 120}
-            width="30" height="24" rx="3" fill={spec.color}
-            style={{ transition: "all .3s", opacity: progress >= 100 ? 0.15 : 1 }} />
-          {running && spec.reacts && Array.from({ length: Math.min(bubblesPerSec + 2, 10) }).map((_, i) => (
-            <circle key={i} cx={140 + ((i * 13) % 40)} cy="140" r={1.5 + (i % 3)}
-              fill="#bfe3ff">
-              <animate attributeName="cy" values={`140;${55 - i * 3}`} dur={`${Math.max(1.6 - rate * 8, 0.4) + i * 0.15}s`} repeatCount="indefinite" begin={`${i * 0.15}s`} />
-              <animate attributeName="opacity" values="0;1;0" dur={`${Math.max(1.6 - rate * 8, 0.4) + i * 0.15}s`} repeatCount="indefinite" begin={`${i * 0.15}s`} />
-            </circle>
-          ))}
-          {!spec.reacts && (
-            <text x="160" y="105" textAnchor="middle" fontSize="10" fill="var(--muted)" fontFamily="monospace">
-              Cu tak bereaksi dengan HCl encer
-            </text>
-          )}
-          <rect x="120" y="172" width="80" height="4" rx="2" fill="var(--border)" />
-          <rect x="120" y="172" width={(progress / 100) * 80} height="4" rx="2" fill="var(--accent)" />
-          <text x="160" y="16" textAnchor="middle" fontSize="9" fill="currentColor" opacity="0.55" fontFamily="monospace">
-            {metal} + HCl → H₂ ↑ {running ? `${progress.toFixed(0)}%` : ""}
-          </text>
-        </svg>
-
-        <p className="mt-3 rounded-xl px-4 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
-          {!spec.reacts
-            ? "Tembaga berada di bawah hidrogen dalam deret volta — tidak bisa merebut Cl dari HCl."
-            : progress >= 100
-              ? "Reaksi selesai — logam habis bereaksi!"
-              : running
-                ? `Laju relatif ${rate.toFixed(2)}%/s — perhatikan naiknya suhu mempercepat gelembung!`
-                : "Pilih logam, atur suhu, lalu masukkan ke asam."}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export default function Simulation() {
   const [mode, setMode] = useState<SimMode>("titration");
 
   const [acidConc, setAcidConc] = useState(0.1);
   const [acidVol, setAcidVol] = useState(25);
   const [baseConc, setBaseConc] = useState(0.1);
-  const [addedVol, setAddedVol] = useState(0);
+  const [addedVol, setAddedVol] = useState(0); // volume basa yang sudah diteteskan
 
-  const [kcLog, setKcLog] = useState(2);
+  const [kcLog, setKcLog] = useState(2);   // log10 Kc
   const [initA, setInitA] = useState(1);
   const [initB, setInitB] = useState(1);
   const [initC, setInitC] = useState(0);
@@ -451,12 +145,14 @@ export default function Simulation() {
   const [temp, setTemp] = useState(25);
   const [ea, setEa] = useState(50);
 
+  // buffer
   const [bufSystem, setBufSystem] = useState<BufferSystem>(BUFFER_SYSTEMS[0]);
   const [bufAcid, setBufAcid] = useState(0.1);
   const [bufBase, setBufBase] = useState(0.1);
   const [added, setAdded] = useState<"asam" | "basa">("basa");
   const [mol, setMol] = useState(0.01);
 
+  // sel volta
   const [anodeId, setAnodeId] = useState("Zn");
   const [cathodeId, setCathodeId] = useState("Cu");
   const [concA, setConcA] = useState(1);
@@ -466,6 +162,7 @@ export default function Simulation() {
   const titration = useMemo(() => {
     const curve = titrationCurve({ acidConc, acidVol, baseConc });
     const eqVol = (acidConc * acidVol) / baseConc;
+    // pH saat ini pada addedVol
     let currentPh = curve[0].ph;
     for (const p of curve) if (p.v <= addedVol) currentPh = p.ph;
     return { curve, eqVol, currentPh };
@@ -503,82 +200,36 @@ export default function Simulation() {
     [anodeId, cathodeId, concA, concC]
   );
 
+  // animKey: memicu redraw kurva saat parameter berubah
   const animKey = `${acidConc}-${acidVol}-${baseConc}`;
 
-  const simModes = MODES.filter(m => m.group === "sim");
-  const labModes = MODES.filter(m => m.group === "lab");
-
   return (
-    <ErrorBoundary label="Simulasi">
-    <section aria-label="Simulasi & Lab interaktif">
-      {/* Header grup */}
-      <div className="mb-3 flex gap-2">
-        <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-          5 Simulasi
-        </span>
-        <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "#34e0a114", color: "#34e0a1" }}>
-          3 Lab Virtual
-        </span>
+    <section aria-label="Simulasi interaktif">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {MODES.map((m) => {
+          const Icon = m.icon;
+          const active = mode === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setMode(m.id)}
+              className={`flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left transition-all ${
+                active ? "" : "glass hover:border-[var(--accent)]/40"
+              }`}
+              style={active ? { background: "var(--accent-soft)", border: "1px solid var(--accent)", backdropFilter: "blur(var(--glass-blur))" } : undefined}
+            >
+              <Icon size={17} strokeWidth={1.75} className={active ? "shrink-0 text-[var(--accent)]" : "shrink-0 text-[var(--muted)]"} />
+              <span className={`text-sm ${active ? "font-semibold text-[var(--accent)]" : ""}`}>{m.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Tab Simulasi */}
-      <div className="mb-2">
-        <p className="mb-2 text-xs font-medium text-[var(--muted)]">Simulasi</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {simModes.map((m) => {
-            const Icon = m.icon;
-            const active = mode === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all ${
-                  active ? "" : "glass hover:border-[var(--accent)]/40"
-                }`}
-                style={active ? { background: "var(--accent-soft)", border: "1px solid var(--accent)" } : undefined}
-              >
-                <Icon size={16} strokeWidth={1.75} className={active ? "shrink-0 text-[var(--accent)]" : "shrink-0 text-[var(--muted)]"} />
-                <span className={`text-xs ${active ? "font-semibold text-[var(--accent)]" : ""}`}>{m.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Tab Lab */}
-      <div className="mb-4">
-        <p className="mb-2 text-xs font-medium text-[var(--muted)]">Lab Virtual</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {labModes.map((m) => {
-            const Icon = m.icon;
-            const active = mode === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all ${
-                  active ? "" : "glass hover:border-[var(--accent)]/40"
-                }`}
-                style={active ? { background: "#34e0a114", border: "1px solid #34e0a1" } : undefined}
-              >
-                <Icon size={16} strokeWidth={1.75} className={active ? "shrink-0" : "shrink-0 text-[var(--muted)]"} style={active ? { color: "#34e0a1" } : undefined} />
-                <span className={`text-xs ${active ? "font-semibold" : ""}`} style={active ? { color: "#34e0a1" } : undefined}>{m.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="glass grid gap-6 p-5 sm:p-6 lg:grid-cols-[240px_1fr]">
-        {/* Kontrol & visualisasi berdasarkan mode */}
-        {mode === "ph-lab" && <PhMixLab />}
-        {mode === "electrolysis-lab" && <ElectrolysisLab />}
-        {mode === "metal-lab" && <MetalAcidLab />}
-
-        {/* Simulasi modes (unchanged dari kode asli, hanya dipindahkan ke sini) */}
-        {mode === "titration" && (
-          <>
-            <div className="space-y-5">
+      <div className="glass mt-4 grid gap-6 p-5 sm:p-6 lg:grid-cols-[240px_1fr]">
+        {/* kontrol */}
+        <div className="space-y-5">
+          {mode === "titration" && (
+            <>
               <h3 className="text-sm font-semibold">Parameter larutan</h3>
               <Slider label="Konsentrasi asam" value={acidConc} min={0.01} max={0.5} step={0.01} unit="M" onChange={(v) => { setAcidConc(v); setAddedVol(0); }} />
               <Slider label="Volume asam" value={acidVol} min={10} max={50} step={1} unit="mL" onChange={(v) => { setAcidVol(v); setAddedVol(0); }} />
@@ -596,24 +247,10 @@ export default function Simulation() {
                 pH saat ini: <b>{titration.currentPh.toFixed(2)}</b> — ekivalen di {titration.eqVol.toFixed(1)} mL.
                 {Math.abs(addedVol - titration.eqVol) < 0.75 && " — kamu tepat di titik ekivalen!"}
               </p>
-            </div>
-            <div>
-              <TitrationFlask currentPh={titration.currentPh} addedVol={addedVol} maxVol={titration.eqVol * 2} />
-              <LineChart
-                data={titration.curve.map((p: TitrationPoint) => ({ x: p.v, y: p.ph }))}
-                xLabel="Volume basa (mL)"
-                yLabel="pH"
-                marker={{ x: titration.eqVol }}
-                markerLabel="ekivalen"
-                keyAnim={animKey}
-              />
-            </div>
-          </>
-        )}
-
-        {mode === "buffer" && (
-          <>
-            <div className="space-y-5">
+            </>
+          )}
+          {mode === "buffer" && (
+            <>
               <h3 className="text-sm font-semibold">Larutan penyangga</h3>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Sistem penyangga</label>
@@ -659,72 +296,324 @@ export default function Simulation() {
                   <><b>Kapasitas habis!</b> {buffer.result.note}</>
                 )}
               </p>
-            </div>
-            <BufferVisual system={bufSystem} curve={buffer.curve} currentPh={buffer.result.ph ?? buffer.initial.ph} mol={mol} added={added} />
-          </>
-        )}
-
-        {mode === "volta" && (
-          <>
-            <div className="space-y-5">
-              <h3 className="text-sm font-semibold">Elektroda</h3>
-              <ElectrodeSelect label="Anoda (−) oksidasi" value={anodeId} onChange={setAnodeId} exclude={cathodeId} />
-              <ElectrodeSelect label="Katoda (+) reduksi" value={cathodeId} onChange={setCathodeId} exclude={anodeId} />
-              <Slider label="Konsentrasi ion anoda" value={concA} min={0.01} max={2} step={0.05} unit="M" onChange={setConcA} />
-              <Slider label="Konsentrasi ion katoda" value={concC} min={0.01} max={2} step={0.05} unit="M" onChange={setConcC} />
+              <p className="text-[11px] leading-relaxed text-[var(--muted)]">{bufSystem.everyday}</p>
+            </>
+          )}
+          {mode === "volta" && (
+            <>
+              <h3 className="text-sm font-semibold">Sel volta</h3>
+              <ElectrodeSelect label="Elektroda negatif (anoda)" value={anodeId} onChange={(v) => {
+                setAnodeId(v);
+                if (v === cathodeId) setCathodeId(v === "Zn" ? "Cu" : "Zn");
+              }} exclude={cathodeId} />
+              <ElectrodeSelect label="Elektroda positif (katoda)" value={cathodeId} onChange={(v) => {
+                setCathodeId(v);
+                if (v === anodeId) setAnodeId(v === "Zn" ? "Cu" : "Zn");
+              }} exclude={anodeId} />
+              <Slider label="[ion] anoda" value={concA} min={0.01} max={2} step={0.01} unit="M" onChange={setConcA} />
+              <Slider label="[ion] katoda" value={concC} min={0.01} max={2} step={0.01} unit="M" onChange={setConcC} />
               <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
-                E sel = <b>{volta.eCell.toFixed(3)} V</b> — {volta.spontan ? "spontan!" : "tidak spontan"}<br />
-                {volta.electronFlow} elektron per reaksi
+                E°sel = <b>{volta.eCell > 0 ? "+" : ""}{volta.eCell.toFixed(2)} V</b>
+                {volta.eCell > 0
+                  ? ` — reaksi spontan, elektron mengalir dari ${volta.anode.symbol} ke ${volta.cathode.symbol}.`
+                  : " — arah reaksi terbalik; tukar posisi elektrodanya."}
               </p>
-            </div>
+            </>
+          )}
+          {mode === "equilibrium" && (
+            <>
+              <h3 className="text-sm font-semibold">H₂ + I₂ ⇌ 2HI</h3>
+              <Slider label="log Kc" value={kcLog} min={-1} max={3} step={1} onChange={setKcLog} />
+              <Slider label="[H₂] awal" value={initA} min={0} max={2} step={0.1} unit="M" onChange={setInitA} />
+              <Slider label="[I₂] awal" value={initB} min={0} max={2} step={0.1} unit="M" onChange={setInitB} />
+              <Slider label="[HI] awal" value={initC} min={0} max={2} step={0.1} unit="M" onChange={setInitC} />
+              <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
+                Setimbang → H₂: {equilibrium.final[0].toFixed(2)} · I₂: {equilibrium.final[1].toFixed(2)} · HI: {equilibrium.final[2].toFixed(2)} M
+              </p>
+            </>
+          )}
+          {mode === "rate" && (
+            <>
+              <h3 className="text-sm font-semibold">Faktor laju</h3>
+              <Slider label="Suhu" value={temp} min={0} max={80} step={1} unit="°C" onChange={setTemp} />
+              <Slider label="Energi aktivasi" value={ea} min={20} max={90} step={5} unit="kJ/mol" onChange={setEa} />
+              <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
+                Laju relatif: <b>{rateData.atTemp.toExponential(1)}</b>. Naikkan suhu → partikel makin agresif!
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* visual */}
+        <div className="min-w-0 rounded-xl p-3 sm:p-4" style={{ background: "color-mix(in srgb, var(--surface-solid) 55%, transparent)" }}>
+          {mode === "titration" && (
+            <TitrationVisual
+              curve={titration.curve}
+              eqVol={titration.eqVol}
+              addedVol={addedVol}
+              currentPh={titration.currentPh}
+              animKey={animKey}
+            />
+          )}
+          {mode === "buffer" && (
+            <BufferVisual system={bufSystem} curve={buffer.curve} currentPh={buffer.result.ph ?? buffer.initial.ph} mol={mol} added={added} />
+          )}
+          {mode === "volta" && (
             <VoltaVisual
-              anode={ELECTRODES.find((e) => e.symbol === anodeId)!}
-              cathode={ELECTRODES.find((e) => e.symbol === cathodeId)!}
+              anode={volta.anode}
+              cathode={volta.cathode}
               eCell={volta.eCell}
               electronFlow={volta.electronFlow}
               spontan={volta.spontan}
             />
-          </>
-        )}
-
-        {mode === "equilibrium" && (
-          <>
-            <div className="space-y-5">
-              <h3 className="text-sm font-semibold">Reaksi H₂ + I₂ ⇌ 2HI</h3>
-              <Slider label="log₁₀ Kc" value={kcLog} min={-2} max={4} step={0.2} onChange={setKcLog} />
-              <Slider label="[H₂]₀" value={initA} min={0} max={2} step={0.1} unit="M" onChange={setInitA} />
-              <Slider label="[I₂]₀" value={initB} min={0} max={2} step={0.1} unit="M" onChange={setInitB} />
-              <Slider label="[HI]₀" value={initC} min={0} max={2} step={0.1} unit="M" onChange={setInitC} />
-              <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
-                Kc = <b>{Math.pow(10, kcLog).toFixed(2)}</b><br />
-                Ekuilibrium: [H₂]={equilibrium.final[0].toFixed(3)}, [I₂]={equilibrium.final[1].toFixed(3)}, [HI]={equilibrium.final[2].toFixed(3)} M
-              </p>
-            </div>
-            <EquilibriumVisual equilibrium={equilibrium} />
-          </>
-        )}
-
-        {mode === "rate" && (
-          <>
-            <div className="space-y-5">
-              <h3 className="text-sm font-semibold">Efek suhu pada laju</h3>
-              <Slider label="Suhu" value={temp} min={0} max={80} step={5} unit="°C" onChange={setTemp} />
-              <Slider label="Energi aktivasi Ea" value={ea} min={20} max={120} step={5} unit="kJ/mol" onChange={setEa} />
-              <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
-                Laju relatif pada {temp}°C: <b>{rateData.atTemp.toFixed(2)}</b><br />
-                Ea = {ea} kJ/mol — semakin tinggi Ea, semakin curam kurva!
-              </p>
-            </div>
-            <RateVisual rates={rateData.rates} temp={temp} />
-          </>
-        )}
+          )}
+          {mode === "equilibrium" && (
+            <EquilibriumVisual final={equilibrium.final} kc={Math.pow(10, kcLog)} animKey={`${kcLog}-${initA}-${initB}-${initC}`} />
+          )}
+          {mode === "rate" && (
+            <RateVisual temp={temp} ea={ea} rates={rateData.rates} atTemp={rateData.atTemp} />
+          )}
+        </div>
       </div>
     </section>
-    </ErrorBoundary>
   );
 }
 
-/* ================= VISUALISASI (dari kode asli, unchanged) ================= */
+/* ================= TITRASI ================= */
+function TitrationVisual({ curve, eqVol, addedVol, currentPh, animKey }: {
+  curve: TitrationPoint[];
+  eqVol: number;
+  addedVol: number;
+  currentPh: number;
+  animKey: string;
+}) {
+  const liquidColor = phColor(currentPh);
+  const nearEq = Math.abs(addedVol - eqVol) < 0.75;
+
+  return (
+    <div>
+      {/* buret + labu */}
+      <svg viewBox="0 0 320 130" className="w-full" role="img" aria-label="Buret meneteskan basa ke dalam larutan asam yang warnanya berubah sesuai pH">
+        {/* buret */}
+        <rect x="60" y="6" width="10" height="72" rx="2" fill="none" stroke="var(--muted)" strokeWidth="1.5" />
+        <path d="M65 78 L65 92" stroke="var(--muted)" strokeWidth="2" />
+        {/* cairan basa dalam buret */}
+        <rect x="61.5" y="8" width="7" height={Math.max(68 - addedVol * 0.9, 4)} rx="1.5" fill="#5b8def" opacity="0.55" />
+        {/* tetesan aktif */}
+        {addedVol > 0 && addedVol < eqVol * 2 && (
+          <circle cx="65" cy="96" r="2.5" fill="#5b8def">
+            <animate attributeName="cy" values="94;112" dur="0.7s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;0" dur="0.7s" repeatCount="indefinite" />
+          </circle>
+        )}
+        {/* labu erlenmeyer */}
+        <path d="M140 52 L148 100 Q149 106 156 106 L204 106 Q211 106 212 100 L220 52 Z" fill="none" stroke="var(--muted)" strokeWidth="1.8" />
+        {/* larutan — warna mengikuti pH */}
+        <path d="M146 74 L152 100 Q153.5 103 157 103 L203 103 Q206.5 103 208 100 L214 74 Z" fill={liquidColor} opacity="0.45">
+          <animate attributeName="opacity" values="0.4;0.55;0.4" dur="2.5s" repeatCount="indefinite" />
+        </path>
+        {/* gelembung reaksi saat dekat ekivalen */}
+        {nearEq && [160, 175, 190].map((x, i) => (
+          <circle key={x} cx={x} cy="98" r="2" fill={liquidColor}>
+            <animate attributeName="cy" values="98;80" dur={`${0.8 + i * 0.2}s`} repeatCount="indefinite" begin={`${i * 0.25}s`} />
+            <animate attributeName="opacity" values="0;0.9;0" dur={`${0.8 + i * 0.2}s`} repeatCount="indefinite" begin={`${i * 0.25}s`} />
+          </circle>
+        ))}
+        {/* label pH besar */}
+        <text x="255" y="66" fontSize="22" fontWeight="bold" fill={liquidColor} fontFamily="monospace">
+          {currentPh.toFixed(1)}
+        </text>
+        <text x="255" y="82" fontSize="9" fill="var(--muted)">pH</text>
+        {/* progress bar penambahan */}
+        <rect x="140" y="118" width="80" height="4" rx="2" fill="var(--border)" />
+        <rect x="140" y="118" width={(addedVol / (eqVol * 2)) * 80} height="4" rx="2" fill={liquidColor} />
+        <circle cx={140 + (eqVol / (eqVol * 2)) * 80} cy="120" r="3" fill="#e05c7a" />
+      </svg>
+
+      {/* kurva */}
+      <LineChart
+        data={curve.map((p) => ({ x: p.v, y: p.ph }))}
+        xLabel="Volume NaOH (mL)"
+        yLabel="pH"
+        marker={{ x: eqVol }}
+        markerLabel="ekivalen"
+        keyAnim={animKey}
+      />
+      {/* titik saat ini di kurva */}
+      <p className="mt-1 text-center text-[11px] text-[var(--muted)]">
+        Titik merah = posisi titrasi sekarang ({addedVol} mL)
+      </p>
+      <svg viewBox="0 0 560 30" className="-mt-1 w-full">
+        {(() => {
+          const W = 560, PAD = 44;
+          const xMax = curve[curve.length - 1].v;
+          const cx = PAD + (addedVol / xMax) * (W - PAD - 12);
+          return <circle cx={cx} cy="14" r="6" fill="#e05c7a" stroke="white" strokeWidth="1.5">
+            <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite" />
+          </circle>;
+        })()}
+      </svg>
+    </div>
+  );
+}
+
+/* ================= KESETIMBANGAN ================= */
+function EquilibriumVisual({ final, kc, animKey }: { final: number[]; kc: number; animKey: string }) {
+  const total = Math.max(final.reduce((a, b) => a + b, 0), 0.001);
+  const nH2 = Math.round((final[0] / total) * 12);
+  const nI2 = Math.round((final[1] / total) * 12);
+  const nHI = Math.round((final[2] / total) * 16);
+
+  return (
+    <div>
+      {/* visual molekul dua arah */}
+      <svg viewBox="0 0 320 150" className="w-full" role="img" aria-label="Molekul reaktan dan produk dengan jumlah sesuai konsentrasi setimbang">
+        {/* zona reaktan */}
+        <rect x="16" y="18" width="128" height="86" rx="10" fill="#5b8def" opacity="0.08" />
+        <text x="80" y="32" textAnchor="middle" fontSize="9" fill="#5b8def" fontFamily="monospace">reaktan</text>
+        {/* zona produk */}
+        <rect x="176" y="18" width="128" height="86" rx="10" fill="#34e0a1" opacity="0.08" />
+        <text x="240" y="32" textAnchor="middle" fontSize="9" fill="#34e0a1" fontFamily="monospace">produk</text>
+        {/* panah dua arah */}
+        <path d="M150 58 L170 58" stroke="var(--muted)" strokeWidth="1.5" markerEnd="url(#arrR)" />
+        <path d="M170 70 L150 70" stroke="var(--muted)" strokeWidth="1.5" markerEnd="url(#arrL)" />
+        <defs>
+          <marker id="arrR" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="var(--muted)" /></marker>
+          <marker id="arrL" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><polygon points="6 0, 0 3, 6 6" fill="var(--muted)" /></marker>
+        </defs>
+        {/* molekul H2 (dua lingkaran biru) */}
+        {Array.from({ length: nH2 }).map((_, i) => (
+          <g key={"h" + i}>
+            <circle cx={38 + (i % 4) * 28} cy={48 + Math.floor(i / 4) * 24} r="4" fill="#5b8def" />
+            <circle cx={46 + (i % 4) * 28} cy={48 + Math.floor(i / 4) * 24} r="4" fill="#5b8def" />
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0; ${i % 2 ? 3 : -3}, ${i % 3 ? -2 : 2}; 0 0`}
+              dur={`${2 + (i % 5) * 0.4}s`} repeatCount="indefinite" additive="sum" />
+          </g>
+        ))}
+        {/* molekul I2 (ungu lebih besar) */}
+        {Array.from({ length: nI2 }).map((_, i) => (
+          <g key={"i" + i}>
+            <circle cx={42 + (i % 4) * 28} cy={50 + Math.floor(i / 4) * 24} r="6" fill="#9d6fd6" opacity="0.85" />
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0; ${i % 2 ? -3 : 3}, ${i % 3 ? 2 : -2}; 0 0`}
+              dur={`${1.8 + (i % 4) * 0.5}s`} repeatCount="indefinite" additive="sum" />
+          </g>
+        ))}
+        {/* molekul HI (hijau, campuran) */}
+        {Array.from({ length: nHI }).map((_, i) => (
+          <g key={"hi" + i}>
+            <circle cx={196 + (i % 5) * 24} cy={50 + Math.floor(i / 5) * 26} r="4" fill="#5b8def" />
+            <circle cx={204 + (i % 5) * 24} cy={50 + Math.floor(i / 5) * 26} r="5.5" fill="#9d6fd6" opacity="0.85" />
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0; ${i % 2 ? 4 : -4}, ${i % 3 ? 3 : -3}; 0 0`}
+              dur={`${1.5 + (i % 6) * 0.35}s`} repeatCount="indefinite" additive="sum" />
+          </g>
+        ))}
+        <CaptionEq kc={kc} />
+      </svg>
+
+      {/* bar komposisi */}
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        {([["[H₂]", final[0]], ["[I₂]", final[1]], ["[HI]", final[2]]] as const).map(([label, val]) => (
+          <div key={label} className="rounded-xl px-3 py-2.5 text-center" style={{ background: "var(--accent-soft)" }}>
+            <p className="font-mono text-sm font-bold text-[var(--accent)] transition-all">{val.toFixed(2)}</p>
+            <p className="font-mono text-[10px] text-[var(--muted)]">{label}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-center text-[11px] text-[var(--muted)]">
+        Jumlah molekul di atas proporsional terhadap konsentrasi setimbang.
+      </p>
+    </div>
+  );
+}
+
+function CaptionEq({ kc }: { kc: number }) {
+  return (
+    <text x="160" y="122" textAnchor="middle" fontSize="9" fill="currentColor" opacity="0.55" fontFamily="monospace">
+      Kc = {kc >= 1000 ? "10³+" : kc.toFixed(0)} — geser log Kc & lihat molokul pindah zona
+    </text>
+  );
+}
+
+/* ================= LAJU REAKSI ================= */
+function RateVisual({ temp, ea, rates, atTemp }: {
+  temp: number; ea: number;
+  rates: { t: number; rate: number }[];
+  atTemp: number;
+}) {
+  // kecepatan partikel proporsional akar suhu (energi kinetik ~ T)
+  const speed = 0.4 + (temp / 80) * 2.4;
+  const nActive = Math.min(Math.round(4 + (temp / 80) * 14), 18);
+  const heatColor = `hsl(${Math.max(0, 200 - temp * 2.5)}, 70%, 55%)`;
+
+  return (
+    <div>
+      <svg viewBox="0 0 320 150" className="w-full" role="img" aria-label="Partikel bereaksi — makin panas makin cepat dan sering bertumbukan">
+        {/* kontainer */}
+        <rect x="16" y="12" width="288" height="104" rx="12" fill="none" stroke={heatColor} strokeWidth="1.8" opacity="0.6" />
+        {/* termometer mini */}
+        <rect x="290" y="20" width="6" height="80" rx="3" fill="var(--border)" />
+        <rect x="290" y={100 - (temp / 80) * 76} width="6" height={(temp / 80) * 76} rx="3" fill={heatColor} />
+        <circle cx="293" cy="102" r="5" fill={heatColor} />
+        {/* partikel */}
+        {Array.from({ length: 18 }).map((_, i) => {
+          const active = i < nActive;
+          const baseDur = active ? (2.6 - (temp / 80) * 1.9) : 99;
+          const x0 = 36 + ((i * 37) % 250);
+          const y0 = 28 + ((i * 23) % 76);
+          return (
+            <g key={i}>
+              <circle cx={x0} cy={y0} r={active ? 4.5 : 3.5}
+                fill={active ? heatColor : "var(--muted)"}
+                opacity={active ? 0.85 : 0.3}>
+                {active && (
+                  <animate attributeName="r" values="4;5;4" dur={`${0.6 + (i % 4) * 0.15}s`} repeatCount="indefinite" />
+                )}
+              </circle>
+              {active && (
+                <animateTransform attributeName="transform" type="translate"
+                  values={`0 0; ${(i % 2 ? 1 : -1) * (14 + (i % 5) * 6)}, ${(i % 3 ? -1 : 1) * (10 + (i % 4) * 5)};
+                           ${(i % 2 ? -1 : 1) * (8 + (i % 3) * 5)}, ${(i % 2 ? 1 : -1) * (12 + (i % 5) * 4)}; 0 0`}
+                  dur={`${Math.max(baseDur, 0.55)}s`}
+                  repeatCount="indefinite"
+                  begin={`${i * 0.08}s`} />
+              )}
+            </g>
+          );
+        })}
+        {/* label energi */}
+        <text x="160" y="132" textAnchor="middle" fontSize="9" fill={heatColor} fontFamily="monospace">
+          {temp}°C · Ea {ea} kJ/mol · laju {atTemp.toExponential(1)}
+        </text>
+      </svg>
+
+      {/* bar chart suhu */}
+      <div className="mt-3 space-y-1.5">
+        {rates.filter((_, i) => i % 2 === 0).map((r) => {
+          const isNear = Math.abs(r.t - temp) < 5;
+          const pct = r.rate > 0 ? (Math.log10(r.rate) / Math.log10(rates[rates.length - 1].rate)) * 100 : 0;
+          return (
+            <div key={r.t} className="flex items-center gap-2">
+              <span className={`w-10 shrink-0 text-right font-mono text-[10px] ${isNear ? "font-bold text-[var(--accent)]" : "text-[var(--muted)]"}`}>{r.t}°</span>
+              <div className="h-4 flex-1 overflow-hidden rounded-md" style={{ background: "var(--border)" }}>
+                <div className="h-full rounded-md transition-all duration-300"
+                  style={{
+                    width: `${Math.max(pct, 1.5)}%`,
+                    background: isNear ? "var(--accent)" : `color-mix(in srgb, var(--accent) ${20 + (r.t / 80) * 40}%, transparent)`,
+                  }} />
+              </div>
+            </div>
+          );
+        })}
+        <p className="pt-1 text-center text-[10px] text-[var(--muted)]">skala logaritmik — perhatikan loncatan di ujung kanan!</p>
+      </div>
+    </div>
+  );
+}
+
+/* ================= LARUTAN PENYANGGA ================= */
 function BufferVisual({ system, curve, currentPh, mol, added }: {
   system: BufferSystem;
   curve: { mol: number; ph: number; phase: string }[];
@@ -740,23 +629,27 @@ function BufferVisual({ system, curve, currentPh, mol, added }: {
   const sx = (x: number) => PAD + (x / xMax) * (W - PAD - 12);
   const sy = (y: number) => H - PAD - ((y - yMin) / (yMax - yMin || 1)) * (H - PAD - 16);
   const path = curve.map((p, i) => `${i ? "L" : "M"} ${sx(p.mol)} ${sy(p.ph)}`).join(" ");
+  // posisi titik sekarang pada kurva
   let cx = sx(0), cy = sy(curve[0].ph);
   for (const p of curve) if (p.mol <= mol) { cx = sx(p.mol); cy = sy(p.ph); }
 
   return (
     <div>
+      {/* gelas kimia dengan larutan berubah warna */}
       <svg viewBox="0 0 320 110" className="w-full" role="img" aria-label={`Gelas kimia larutan penyangga ${system.label}, pH ${currentPh.toFixed(2)}`}>
         <path d="M100 20 L104 96 Q105 102 112 102 L208 102 Q215 102 216 96 L220 20 Z"
           fill="none" stroke="var(--muted)" strokeWidth="1.8" />
         <rect x={106} y={40} width={108} height={58} rx={4} fill={color} opacity="0.45">
           <animate attributeName="opacity" values="0.38;0.52;0.38" dur="2.6s" repeatCount="indefinite" />
         </rect>
+        {/* tetesan asam/basa yang jatuh */}
         {mol > 0 && (
           <circle cx={added === "asam" ? 130 : 190} cy="30" r="2.5" fill={added === "asam" ? "#e05c7a" : "#5b8def"}>
             <animate attributeName="cy" values="28;44" dur="0.7s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0;1;0" dur="0.7s" repeatCount="indefinite" />
           </circle>
         )}
+        {/* perisai kecil = simbol penyangga */}
         <g transform="translate(252,30)" opacity="0.75">
           <path d="M0 -10 L9 -6 V3 Q0 12 -0 12 Q-0 12 -9 3 V-6 Z" fill="none" stroke={color} strokeWidth="1.5" />
           <text x="14" y="4" fontSize="9" fill="var(--muted)">pH tahan!</text>
@@ -766,7 +659,8 @@ function BufferVisual({ system, curve, currentPh, mol, added }: {
         </text>
       </svg>
 
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Kurva titrasi penyangga">
+      {/* kurva */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Kurva titrasi penyangga terhadap basa kuat">
         {[0, 3, 7, 11, 14].map((t) => (
           <g key={t}>
             <line x1={PAD} y1={sy(t)} x2={W - 12} y2={sy(t)} stroke="var(--border)" strokeWidth="0.7" />
@@ -774,21 +668,29 @@ function BufferVisual({ system, curve, currentPh, mol, added }: {
           </g>
         ))}
         <line x1={PAD} y1={sy(system.pka)} x2={W - 12} y2={sy(system.pka)} stroke="#34e0a1" strokeWidth="0.8" strokeDasharray="3 4" opacity="0.55" />
+        <text x={W - 16} y={sy(system.pka) - 5} textAnchor="end" fontSize="8.5" fill="#34e0a1" fontFamily="monospace">pKa {system.pka}</text>
         <line x1={PAD} y1={H - PAD} x2={W - 12} y2={H - PAD} stroke="var(--muted)" strokeWidth="1" />
         <line x1={PAD} y1="14" x2={PAD} y2={H - PAD} stroke="var(--muted)" strokeWidth="1" />
         <text x={(W + PAD) / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">
-          {added === "asam" ? "mol H⁺ ditambahkan" : "mol OH⁻ ditambahkan"}
+          {added === "asam" ? "mol H⁺ ditambahkan (pH turun)" : "mol OH⁻ ditambahkan (pH naik)"}
         </text>
         <text x="12" y={(H - PAD + 20) / 2} fontSize="10" fill="var(--muted)" transform={`rotate(-90 12 ${(H - PAD + 20) / 2})`} textAnchor="middle">pH</text>
-        <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round" />
+        <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round"
+          style={{ filter: "drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 35%, transparent))" }} />
         <circle cx={cx} cy={cy} r="6" fill="#e05c7a" stroke="white" strokeWidth="1.5">
           <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite" />
         </circle>
       </svg>
+      <p className="mt-1 text-center text-[11px] text-[var(--muted)]">
+        {added === "asam"
+          ? "Kurva turun — H⁻ dineetralkan basa konjugasi, pH tertahan di dekat pKa"
+          : "Daerah datar di pKa = zona kerja penyangga"} · titik merah = kondisi sekarang
+      </p>
     </div>
   );
 }
 
+/* ================= SEL VOLTA ================= */
 function ElectrodeSelect({ label, value, onChange, exclude }: {
   label: string;
   value: string;
@@ -819,250 +721,73 @@ function VoltaVisual({ anode, cathode, eCell, electronFlow, spontan }: {
   spontan: boolean;
 }) {
   const wireY = 22;
-  const [showRate, setShowRate] = useState(false);
-  
   return (
     <div>
       <svg viewBox="0 0 320 210" className="w-full" role="img"
-        aria-label={`Sel volta ${anode.symbol}-${cathode.symbol}, E sel ${eCell.toFixed(2)} volt`}
-        onMouseEnter={() => setShowRate(true)}
-        onMouseLeave={() => setShowRate(false)}
-        onTouchStart={() => setShowRate(true)}>
-        <defs>
-          {/* Gradient anode(biru)→cathode(merah) */}
-          <linearGradient id="wire-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#5b8def" stopOpacity="0.6" />
-            <stop offset="50%" stopColor="#34e0a1" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#e05c7a" stopOpacity="0.6" />
-          </linearGradient>
-          {/* Glow untuk elektron */}
-          <filter id="electron-glow">
-            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        
-        {/* Wire dengan gradient saat spontan */}
-        <path d={`M70 ${wireY} H140 M180 ${wireY} H250`} 
-          stroke={spontan ? "url(#wire-gradient)" : "var(--muted)"} 
-          strokeWidth={spontan ? "2.4" : "1.6"} />
-        
-        {/* Voltmeter */}
-        <rect x="140" y={wireY - 12} width="40" height="24" rx="5" fill="none" 
-          stroke={spontan ? "#34e0a1" : "var(--muted)"} strokeWidth="1.6" />
+        aria-label={`Sel volta ${anode.symbol}-${cathode.symbol}, E sel ${eCell.toFixed(2)} volt`}>
+        {/* kawat + voltmeter */}
+        <path d={`M70 ${wireY} H140 M180 ${wireY} H250`} stroke="var(--muted)" strokeWidth="1.6" />
+        <rect x="140" y={wireY - 12} width="40" height="24" rx="5" fill="none" stroke={spontan ? "#34e0a1" : "var(--muted)"} strokeWidth="1.6" />
         <text x="160" y={wireY + 4} textAnchor="middle" fontSize="10" fontWeight="bold"
           fill={spontan ? "#34e0a1" : "var(--muted)"} fontFamily="monospace">
           {Math.abs(eCell).toFixed(2)}V
         </text>
-        
-        {/* Elektron dengan glow */}
+        {/* elektron mengalir anoda → katoda; anoda selalu digambar di gelas kiri,
+            jadi arah animasinya selalu kiri → kanan melewati voltmeter */}
         {spontan && [0, 1, 2].map((i) => (
-          <circle key={i} r="3.5" fill="#e05c7a" filter="url(#electron-glow)">
+          <circle key={i} r="3" fill="#e05c7a">
             <animate attributeName="cx" values="70;140" dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
             <animate attributeName="cy" values={`${wireY};${wireY}`} dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
             <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
           </circle>
         ))}
-        
-        {/* Tooltip rate elektron */}
-        {showRate && spontan && (
-          <g>
-            <rect x="145" y="48" width="90" height="22" rx="4" fill="rgba(0,0,0,0.85)" stroke="#34e0a1" strokeWidth="0.8" />
-            <text x="190" y="62" textAnchor="middle" fontSize="9" fill="#34e0a1" fontFamily="monospace">
-              {electronFlow.toFixed(2)} e⁻/reaksi
-            </text>
-          </g>
-        )}
-        
-        {/* Gelas anode */}
+        {/* gelas kiri (anoda) */}
         <path d="M40 60 L44 170 Q45 176 52 176 L108 176 Q115 176 116 170 L120 60 Z" fill="none" stroke="var(--muted)" strokeWidth="1.6" />
         <rect x={47} y={90} width={66} height={82} rx={3} fill={anode.solutionColor} opacity="0.4" />
+        {/* pelat anoda */}
         <rect x={72} y={48} width={16} height={112} rx={2} fill={anode.color} opacity="0.85" />
         <text x={80} y={200} textAnchor="middle" fontSize="11" fontWeight="bold" fill={anode.color} fontFamily="monospace">{anode.symbol}</text>
-        
-        {/* Jembatan garam */}
+        <text x={80} y={36} textAnchor="middle" fontSize="8.5" fill="var(--muted)">anoda (−)</text>
+        {/* jembatan garam */}
         <path d="M118 92 Q160 74 202 92" fill="none" stroke="var(--muted)" strokeWidth="7" strokeLinecap="round" opacity="0.55" />
-        
-        {/* Gelas cathode */}
+        <path d="M118 92 Q160 74 202 92" fill="none" stroke="var(--surface-solid)" strokeWidth="3.5" strokeLinecap="round" />
+        <text x="160" y="66" textAnchor="middle" fontSize="8.5" fill="var(--muted)">jembatan garam</text>
+        {/* gelas kanan (katoda) */}
         <path d="M200 60 L204 170 Q205 176 212 176 L268 176 Q275 176 276 170 L280 60 Z" fill="none" stroke="var(--muted)" strokeWidth="1.6" />
         <rect x={207} y={90} width={66} height={82} rx={3} fill={cathode.solutionColor} opacity="0.4" />
         <rect x={232} y={48} width={16} height={112} rx={2} fill={cathode.color} opacity="0.85" />
         <text x={240} y={200} textAnchor="middle" fontSize="11" fontWeight="bold" fill={cathode.color} fontFamily="monospace">{cathode.symbol}</text>
+        <text x={240} y={36} textAnchor="middle" fontSize="8.5" fill="var(--muted)">katoda (+)</text>
+        {/* gelembung di anoda saat spontan */}
+        {spontan && [64, 80, 96].map((x, i) => (
+          <circle key={x} cx={x} cy="150" r="1.8" fill={anode.solutionColor}>
+            <animate attributeName="cy" values="152;128" dur={`${1 + i * 0.3}s`} repeatCount="indefinite" begin={`${i * 0.3}s`} />
+            <animate attributeName="opacity" values="0;0.9;0" dur={`${1 + i * 0.3}s`} repeatCount="indefinite" begin={`${i * 0.3}s`} />
+          </circle>
+        ))}
+        {/* notasi sel */}
+        <text x="160" y="196" textAnchor="middle" fontSize="9" fill="var(--muted)" fontFamily="monospace" opacity="0.85">
+          {anode.symbol} | {anode.ion} ‖ {cathode.ion} | {cathode.symbol}
+        </text>
+        {/* reaksi setengah sel */}
+        <text x={80} y={186} textAnchor="middle" fontSize="7.5" fill="currentColor" opacity="0.6" fontFamily="monospace">{anode.halfReaction}</text>
+        <text x={240} y={186} textAnchor="middle" fontSize="7.5" fill="currentColor" opacity="0.6" fontFamily="monospace">{cathode.halfReaction}</text>
       </svg>
       <div className="mt-2 grid grid-cols-2 gap-3">
         <div className="rounded-xl px-3 py-2.5" style={{ background: `${anode.color}14`, border: `1px solid ${anode.color}33` }}>
           <p className="font-mono text-[10px]" style={{ color: anode.color }}>{anode.name} — oksidasi</p>
+          <p className="mt-1 font-mono text-[10.5px] leading-relaxed">{anode.halfReaction}</p>
         </div>
         <div className="rounded-xl px-3 py-2.5" style={{ background: `${cathode.color}14`, border: `1px solid ${cathode.color}33` }}>
           <p className="font-mono text-[10px]" style={{ color: cathode.color }}>{cathode.name} — reduksi</p>
+          <p className="mt-1 font-mono text-[10.5px] leading-relaxed">{cathode.halfReaction}</p>
         </div>
       </div>
-    </div>
-  );
-}
-
-function EquilibriumVisual({ equilibrium }: { equilibrium: any }) {
-  const maxConc = Math.max(...equilibrium.final, 0.1);
-  const [h2, i2, hi] = equilibrium.final;
-  
-  return (
-    <div className="space-y-4">
-      {/* Bar chart konsentrasi */}
-      <div className="space-y-2">
-        {[
-          { label: "H₂", conc: h2, color: "#5b8def" },
-          { label: "I₂", conc: i2, color: "#9d6fd6" },
-          { label: "HI", conc: hi, color: "#34e0a1" },
-        ].map((item) => {
-          const pct = (item.conc / maxConc) * 100;
-          return (
-            <div key={item.label} className="flex items-center gap-2">
-              <span className="w-8 shrink-0 font-mono text-[10px] text-[var(--muted)]">{item.label}</span>
-              <div className="h-5 flex-1 overflow-hidden rounded-md" style={{ background: "var(--border)" }}>
-                <div
-                  className="h-full rounded-md transition-all duration-500"
-                  style={{
-                    width: `${Math.max(pct, 2)}%`,
-                    background: item.color,
-                  }}
-                />
-              </div>
-              <span className="w-14 shrink-0 text-right font-mono text-[10px]">{item.conc.toFixed(3)} M</span>
-            </div>
-          );
-        })}
-      </div>
-      
-      {/* Visualisasi molekul bergerak */}
-      <svg viewBox="0 0 320 90" className="w-full" role="img" aria-label="Molekul dalam kesetimbangan">
-        <defs>
-          <filter id="glow-eq">
-            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        
-        {/* H₂ (biru, 3 molekul) */}
-        {[40, 90, 140].map((x, i) => (
-          <g key={`h2-${i}`}>
-            <circle cx={x} cy={35} r="6" fill="#5b8def" opacity="0.8" filter="url(#glow-eq)">
-              <animate attributeName="cx" values={`${x};${x + 20};${x}`} dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
-              <animate attributeName="cy" values={`35;${30 + (i % 2) * 10};35`} dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
-            </circle>
-            <text x={x} y="38" textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace">H₂</text>
-          </g>
-        ))}
-        
-        {/* I₂ (ungu, 3 molekul) */}
-        {[200, 250, 290].map((x, i) => (
-          <g key={`i2-${i}`}>
-            <circle cx={x} cy={35} r="6" fill="#9d6fd6" opacity="0.8" filter="url(#glow-eq)">
-              <animate attributeName="cx" values={`${x};${x - 20};${x}`} dur={`${2.2 + i * 0.25}s`} repeatCount="indefinite" />
-              <animate attributeName="cy" values={`35;${28 + (i % 2) * 12};35`} dur={`${2.2 + i * 0.25}s`} repeatCount="indefinite" />
-            </circle>
-            <text x={x} y="38" textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace">I₂</text>
-          </g>
-        ))}
-        
-        {/* HI (hijau, 5 molekul) */}
-        {[80, 130, 180, 230, 270].map((x, i) => (
-          <g key={`hi-${i}`}>
-            <circle cx={x} cy={65} r="5" fill="#34e0a1" opacity="0.75" filter="url(#glow-eq)">
-              <animate attributeName="cx" values={`${x};${x + (i % 2 ? 15 : -15)};${x}`} dur={`${1.8 + i * 0.2}s`} repeatCount="indefinite" />
-              <animate attributeName="cy" values={`65;${60 + (i % 3) * 8};65`} dur={`${1.8 + i * 0.2}s`} repeatCount="indefinite" />
-            </circle>
-            <text x={x} y="67" textAnchor="middle" fontSize="6" fill="#fff" fontFamily="monospace">HI</text>
-          </g>
-        ))}
-        
-        {/* Panah bolak-balik */}
-        <path d="M 160 20 L 200 20 M 155 20 L 160 15 L 160 25 Z M 205 20 L 200 15 L 200 25 Z" 
-          fill="var(--muted)" stroke="var(--muted)" strokeWidth="0.8" opacity="0.5" />
-        <text x="180" y="16" textAnchor="middle" fontSize="8" fill="var(--muted)">⇌</text>
-      </svg>
-    </div>
-  );
-}
-
-function RateVisual({ rates, temp }: { rates: { t: number; rate: number }[]; temp: number }) {
-  return (
-    <div className="space-y-4">
-      {/* Bar chart laju */}
-      <div className="space-y-2">
-        {rates.filter((_, i) => i % 2 === 0).map((r) => {
-          const isNear = Math.abs(r.t - temp) < 5;
-          const pct = r.rate > 0 ? (Math.log10(r.rate) / Math.log10(rates[rates.length - 1].rate)) * 100 : 0;
-          return (
-            <div key={r.t} className="flex items-center gap-2">
-              <span className={`w-10 shrink-0 text-right font-mono text-[10px] ${isNear ? "font-bold text-[var(--accent)]" : "text-[var(--muted)]"}`}>{r.t}°</span>
-              <div className="h-4 flex-1 overflow-hidden rounded-md" style={{ background: "var(--border)" }}>
-                <div className="h-full rounded-md transition-all duration-300"
-                  style={{
-                    width: `${Math.max(pct, 1.5)}%`,
-                    background: isNear ? "var(--accent)" : `color-mix(in srgb, var(--accent) ${20 + (r.t / 80) * 40}%, transparent)`,
-                  }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      
-      {/* Visualisasi partikel collision — makin cepat saat suhu tinggi */}
-      <svg viewBox="0 0 320 100" className="w-full" role="img" aria-label="Partikel bertumbukan, kecepatan meningkat dengan suhu">
-        <defs>
-          <filter id="glow-rate">
-            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        
-        {/* Partikel A (biru) — 6 partikel bergerak horizontal */}
-        {[20, 60, 100, 140, 180, 220].map((x, i) => {
-          const speed = 0.8 + (temp / 80) * 1.5; // 0.8s-2.3s tergantung suhu
-          return (
-            <g key={`a-${i}`}>
-              <circle cx={x} cy={35 + (i % 3) * 10} r="5" fill="#5b8def" opacity="0.85" filter="url(#glow-rate)">
-                <animate attributeName="cx" values={`${x};${x + 80};${x}`} dur={`${speed}s`} repeatCount="indefinite" begin={`${i * 0.15}s`} />
-              </circle>
-              <text x={x} y={38 + (i % 3) * 10} textAnchor="middle" fontSize="6" fill="#fff" fontFamily="monospace">A</text>
-            </g>
-          );
-        })}
-        
-        {/* Partikel B (merah) — 5 partikel bergerak dari kanan */}
-        {[280, 240, 200, 160, 120].map((x, i) => {
-          const speed = 0.9 + (temp / 80) * 1.4;
-          return (
-            <g key={`b-${i}`}>
-              <circle cx={x} cy={65 + (i % 2) * 12} r="5" fill="#e05c7a" opacity="0.85" filter="url(#glow-rate)">
-                <animate attributeName="cx" values={`${x};${x - 75};${x}`} dur={`${speed}s`} repeatCount="indefinite" begin={`${i * 0.18}s`} />
-              </circle>
-              <text x={x} y={68 + (i % 2) * 12} textAnchor="middle" fontSize="6" fill="#fff" fontFamily="monospace">B</text>
-            </g>
-          );
-        })}
-        
-        {/* Spark collision di tengah */}
-        {[140, 180].map((x, i) => (
-          <circle key={`spark-${i}`} cx={x} cy={50} r="3" fill="#ffb454" opacity="0">
-            <animate attributeName="opacity" values="0;0.9;0" dur={`${1.2 - (temp / 80) * 0.6}s`} repeatCount="indefinite" begin={`${i * 0.6}s`} />
-            <animate attributeName="r" values="2;5;2" dur={`${1.2 - (temp / 80) * 0.6}s`} repeatCount="indefinite" begin={`${i * 0.6}s`} />
-          </circle>
-        ))}
-        
-        <text x="160" y="96" textAnchor="middle" fontSize="8" fill="var(--muted)" fontFamily="monospace">
-          {temp}°C — partikel bergerak {temp > 40 ? "cepat" : temp > 20 ? "sedang" : "lambat"}
-        </text>
-      </svg>
+      <p className="mt-2 text-center text-[11px] text-[var(--muted)]">
+        {electronFlow > 0
+          ? `${electronFlow.toFixed(2)} elektron lewat per reaksi — ubah konsentrasi ion dan lihat tegangannya (Nernst).`
+          : "Reaksi tidak spontan pada susunan ini."}
+      </p>
     </div>
   );
 }

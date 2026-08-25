@@ -10,7 +10,8 @@ const LINKS = [
   { href: "/explorer", label: "Explorer", icon: FlaskConical },
   { href: "/kenali-zat", label: "Kenali Zat", icon: ScanText },
   { href: "/tabel-periodik", label: "Tabel Periodik", icon: Grid3x3 },
-  { href: "/simulasi", label: "Simulasi & Lab", icon: TrendingUp },
+  { href: "/simulasi", label: "Simulasi", icon: TrendingUp },
+  { href: "/lab", label: "Lab Virtual", icon: FlaskConical },
   { href: "/database", label: "Zat", icon: Database },
   { href: "/referensi", label: "Referensi", icon: BookMarked },
 ];
@@ -45,7 +46,7 @@ export default function Nav() {
         aria-label="Navigasi utama"
       >
         {LINKS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href === "/simulasi" && pathname === "/lab");
+          const active = pathname === href;
           return (
             <Link
               key={href}
@@ -77,7 +78,7 @@ export default function Nav() {
         aria-label="Navigasi utama"
       >
         {LINKS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href === "/simulasi" && pathname === "/lab");
+          const active = pathname === href;
           return (
             <Link
               key={href}
