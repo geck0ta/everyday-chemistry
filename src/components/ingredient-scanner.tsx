@@ -6,6 +6,7 @@ import { Camera, ClipboardPaste, Loader2, Plus, ScanText, Search, TriangleAlert,
 import { identifyIngredients, linkedSubstance } from "@/lib/identify";
 import type { MatchResult } from "@/lib/identify";
 import Formula from "@/components/formula";
+import ErrorBoundary from "@/components/error-boundary";
 
 const CONF_META = {
   yakin: { label: "dikenali", color: "var(--accent)" },
@@ -110,6 +111,8 @@ export default function IngredientScanner() {
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [ocrState, setOcrState] = useState<"idle" | "loading" | "error">("idle");
   const [ocrMsg, setOcrMsg] = useState("");
+  /** 0–100: kemajuan OCR (0 = idle, 100 = selesai) */
+  const [ocrProgress, setOcrProgress] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const runIdentify = useCallback((input: string) => {
@@ -120,6 +123,7 @@ export default function IngredientScanner() {
 
   const handleOcrFile = useCallback(async (file: File) => {
     setOcrState("loading");
+    setOcrProgress(15);
     setOcrMsg("Menyiapkan mesin baca teks…");
     try {
       // dynamic import agar tesseract.js tidak membebani bundle halaman lain;
@@ -130,29 +134,38 @@ export default function IngredientScanner() {
         corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@7",
         langPath: "https://tessdata.projectnaptha.com/4.0.0",
       });
+      setOcrProgress(40);
       setOcrMsg("Membaca teks dari gambar…");
       const { data } = await worker.recognize(file);
+      setOcrProgress(85);
       await worker.terminate();
       const out = data.text.trim();
       if (!out) {
         setOcrState("error");
         setOcrMsg("Tidak ada teks terbaca. Coba foto lebih dekat dengan pencahayaan cukup.");
+        setOcrProgress(0);
         return;
       }
+      setOcrMsg("Mengenali bahan…");
+      setOcrProgress(95);
       setText(out.replace(/\n+/g, ", "));
       setResults(identifyIngredients(out));
       setOcrState("idle");
       setOcrMsg("");
+      setOcrProgress(100);
+      setTimeout(() => setOcrProgress(0), 800);
     } catch {
       setOcrState("error");
       setOcrMsg("OCR gagal dimuat (butuh koneksi internet pertama kali). Ketik/paste komposisinya saja dulu.");
+      setOcrProgress(0);
     }
   }, []);
 
   const unknownCount = results?.filter((r) => !r.match).length ?? 0;
 
   return (
-    <div className="space-y-6">
+    <ErrorBoundary label="Kenali Zat" onRetry={() => { setResults(null); setText(""); setOcrState("idle"); }}>
+      <div className="space-y-6">
       {/* Input area */}
       <div className="glass rounded-2xl p-4 sm:p-5">
         <label htmlFor="komposisi" className="text-sm font-medium">
@@ -216,10 +229,22 @@ export default function IngredientScanner() {
         </div>
 
         {ocrState === "loading" && (
-          <p className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
-            <Loader2 size={13} strokeWidth={1.75} className="animate-spin" />
-            {ocrMsg}
-          </p>
+          <div className="mt-3 space-y-2">
+            <p className="flex items-center gap-2 text-xs text-[var(--muted)]">
+              <Loader2 size={13} strokeWidth={1.75} className="animate-spin" />
+              {ocrMsg}
+            </p>
+            <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--surface-solid)" }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${ocrProgress}%`,
+                  background: "var(--accent)",
+                  boxShadow: "0 0 6px 1px var(--accent)",
+                }}
+              />
+            </div>
+          </div>
         )}
         {ocrState === "error" && (
           <p className="mt-3 flex items-center gap-2 text-xs" style={{ color: "#d14d6b" }}>
@@ -254,9 +279,10 @@ export default function IngredientScanner() {
             {results.map((r, i) => (
               <ResultCard key={`${r.raw}-${i}`} r={r} />
             ))}
-          </div>
-        </section>
-      )}
+            </div>
+            </section>
+      )}\
     </div>
+    </ErrorBoundary>
   );
 }

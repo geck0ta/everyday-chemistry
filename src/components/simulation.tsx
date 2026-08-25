@@ -11,6 +11,7 @@ import {
   type BufferSystem,
 } from "@/lib/buffer-sim";
 import { ELECTRODES, voltaCell, type Electrode } from "@/lib/volta-sim";
+import ErrorBoundary from "@/components/error-boundary";
 
 /* ---------- Grafik SVG dengan animasi menggambar ---------- */
 function LineChart({ data, xLabel, yLabel, marker, markerLabel, color = "var(--accent)", keyAnim }: {
@@ -204,6 +205,7 @@ export default function Simulation() {
   const animKey = `${acidConc}-${acidVol}-${baseConc}`;
 
   return (
+    <ErrorBoundary label="Simulasi">
     <section aria-label="Simulasi interaktif">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {MODES.map((m) => {
@@ -376,6 +378,7 @@ export default function Simulation() {
         </div>
       </div>
     </section>
+    </ErrorBoundary>
   );
 }
 
