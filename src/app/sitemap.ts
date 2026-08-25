@@ -6,7 +6,7 @@ export const dynamic = "force-static";
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://everyday-chemistry.vercel.app";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const staticPages = ["", "/explorer", "/kenali-zat", "/simulasi", "/database", "/lab", "/referensi"].map((p) => ({
+  const staticPages = ["", "/explorer", "/kenali-zat", "/tabel-periodik", "/simulasi", "/database", "/lab", "/referensi"].map((p) => ({
     url: `${BASE}${p}`,
     lastModified: new Date(),
     changeFrequency: "monthly" as const,
