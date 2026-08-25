@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Calculator, FlaskConical, TrendingUp, Database, TestTube, BookMarked, ScanText, Grid3x3 } from "lucide-react";
+import { Calculator, FlaskConical, TrendingUp, Database, ScanText, Grid3x3, BookMarked } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
 
 const LINKS = [
@@ -10,9 +10,8 @@ const LINKS = [
   { href: "/explorer", label: "Explorer", icon: FlaskConical },
   { href: "/kenali-zat", label: "Kenali Zat", icon: ScanText },
   { href: "/tabel-periodik", label: "Tabel Periodik", icon: Grid3x3 },
-  { href: "/simulasi", label: "Simulasi", icon: TrendingUp },
+  { href: "/simulasi", label: "Simulasi & Lab", icon: TrendingUp },
   { href: "/database", label: "Zat", icon: Database },
-  { href: "/lab", label: "Lab", icon: TestTube },
   { href: "/referensi", label: "Referensi", icon: BookMarked },
 ];
 
@@ -46,7 +45,7 @@ export default function Nav() {
         aria-label="Navigasi utama"
       >
         {LINKS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
+          const active = pathname === href || (href === "/simulasi" && pathname === "/lab");
           return (
             <Link
               key={href}
@@ -78,7 +77,7 @@ export default function Nav() {
         aria-label="Navigasi utama"
       >
         {LINKS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
+          const active = pathname === href || (href === "/simulasi" && pathname === "/lab");
           return (
             <Link
               key={href}
