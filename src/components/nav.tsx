@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Calculator, FlaskConical, TrendingUp, Database, TestTube, BookMarked } from "lucide-react";
+import { Calculator, FlaskConical, TrendingUp, Database, TestTube, BookMarked, ScanText } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
 
 const LINKS = [
   { href: "/", label: "Hitung", icon: Calculator },
   { href: "/explorer", label: "Explorer", icon: FlaskConical },
+  { href: "/kenali-zat", label: "Kenali Zat", icon: ScanText },
   { href: "/simulasi", label: "Simulasi", icon: TrendingUp },
   { href: "/database", label: "Zat", icon: Database },
   { href: "/lab", label: "Lab", icon: TestTube },
