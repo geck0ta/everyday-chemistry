@@ -905,37 +905,164 @@ function VoltaVisual({ anode, cathode, eCell, electronFlow, spontan }: {
 }
 
 function EquilibriumVisual({ equilibrium }: { equilibrium: any }) {
+  const maxConc = Math.max(...equilibrium.final, 0.1);
+  const [h2, i2, hi] = equilibrium.final;
+  
   return (
-    <div className="rounded-xl px-4 py-3" style={{ background: "var(--accent-soft)" }}>
-      <p className="text-xs">Konsentrasi ekuilibrium:</p>
-      <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-xs">
-        <div>[H₂] = {equilibrium.final[0].toFixed(3)} M</div>
-        <div>[I₂] = {equilibrium.final[1].toFixed(3)} M</div>
-        <div>[HI] = {equilibrium.final[2].toFixed(3)} M</div>
+    <div className="space-y-4">
+      {/* Bar chart konsentrasi */}
+      <div className="space-y-2">
+        {[
+          { label: "H₂", conc: h2, color: "#5b8def" },
+          { label: "I₂", conc: i2, color: "#9d6fd6" },
+          { label: "HI", conc: hi, color: "#34e0a1" },
+        ].map((item) => {
+          const pct = (item.conc / maxConc) * 100;
+          return (
+            <div key={item.label} className="flex items-center gap-2">
+              <span className="w-8 shrink-0 font-mono text-[10px] text-[var(--muted)]">{item.label}</span>
+              <div className="h-5 flex-1 overflow-hidden rounded-md" style={{ background: "var(--border)" }}>
+                <div
+                  className="h-full rounded-md transition-all duration-500"
+                  style={{
+                    width: `${Math.max(pct, 2)}%`,
+                    background: item.color,
+                  }}
+                />
+              </div>
+              <span className="w-14 shrink-0 text-right font-mono text-[10px]">{item.conc.toFixed(3)} M</span>
+            </div>
+          );
+        })}
       </div>
+      
+      {/* Visualisasi molekul bergerak */}
+      <svg viewBox="0 0 320 90" className="w-full" role="img" aria-label="Molekul dalam kesetimbangan">
+        <defs>
+          <filter id="glow-eq">
+            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        
+        {/* H₂ (biru, 3 molekul) */}
+        {[40, 90, 140].map((x, i) => (
+          <g key={`h2-${i}`}>
+            <circle cx={x} cy={35} r="6" fill="#5b8def" opacity="0.8" filter="url(#glow-eq)">
+              <animate attributeName="cx" values={`${x};${x + 20};${x}`} dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
+              <animate attributeName="cy" values={`35;${30 + (i % 2) * 10};35`} dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
+            </circle>
+            <text x={x} y="38" textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace">H₂</text>
+          </g>
+        ))}
+        
+        {/* I₂ (ungu, 3 molekul) */}
+        {[200, 250, 290].map((x, i) => (
+          <g key={`i2-${i}`}>
+            <circle cx={x} cy={35} r="6" fill="#9d6fd6" opacity="0.8" filter="url(#glow-eq)">
+              <animate attributeName="cx" values={`${x};${x - 20};${x}`} dur={`${2.2 + i * 0.25}s`} repeatCount="indefinite" />
+              <animate attributeName="cy" values={`35;${28 + (i % 2) * 12};35`} dur={`${2.2 + i * 0.25}s`} repeatCount="indefinite" />
+            </circle>
+            <text x={x} y="38" textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace">I₂</text>
+          </g>
+        ))}
+        
+        {/* HI (hijau, 5 molekul) */}
+        {[80, 130, 180, 230, 270].map((x, i) => (
+          <g key={`hi-${i}`}>
+            <circle cx={x} cy={65} r="5" fill="#34e0a1" opacity="0.75" filter="url(#glow-eq)">
+              <animate attributeName="cx" values={`${x};${x + (i % 2 ? 15 : -15)};${x}`} dur={`${1.8 + i * 0.2}s`} repeatCount="indefinite" />
+              <animate attributeName="cy" values={`65;${60 + (i % 3) * 8};65`} dur={`${1.8 + i * 0.2}s`} repeatCount="indefinite" />
+            </circle>
+            <text x={x} y="67" textAnchor="middle" fontSize="6" fill="#fff" fontFamily="monospace">HI</text>
+          </g>
+        ))}
+        
+        {/* Panah bolak-balik */}
+        <path d="M 160 20 L 200 20 M 155 20 L 160 15 L 160 25 Z M 205 20 L 200 15 L 200 25 Z" 
+          fill="var(--muted)" stroke="var(--muted)" strokeWidth="0.8" opacity="0.5" />
+        <text x="180" y="16" textAnchor="middle" fontSize="8" fill="var(--muted)">⇌</text>
+      </svg>
     </div>
   );
 }
 
 function RateVisual({ rates, temp }: { rates: { t: number; rate: number }[]; temp: number }) {
   return (
-    <div className="space-y-2">
-      {rates.filter((_, i) => i % 2 === 0).map((r) => {
-        const isNear = Math.abs(r.t - temp) < 5;
-        const pct = r.rate > 0 ? (Math.log10(r.rate) / Math.log10(rates[rates.length - 1].rate)) * 100 : 0;
-        return (
-          <div key={r.t} className="flex items-center gap-2">
-            <span className={`w-10 shrink-0 text-right font-mono text-[10px] ${isNear ? "font-bold text-[var(--accent)]" : "text-[var(--muted)]"}`}>{r.t}°</span>
-            <div className="h-4 flex-1 overflow-hidden rounded-md" style={{ background: "var(--border)" }}>
-              <div className="h-full rounded-md transition-all duration-300"
-                style={{
-                  width: `${Math.max(pct, 1.5)}%`,
-                  background: isNear ? "var(--accent)" : `color-mix(in srgb, var(--accent) ${20 + (r.t / 80) * 40}%, transparent)`,
-                }} />
+    <div className="space-y-4">
+      {/* Bar chart laju */}
+      <div className="space-y-2">
+        {rates.filter((_, i) => i % 2 === 0).map((r) => {
+          const isNear = Math.abs(r.t - temp) < 5;
+          const pct = r.rate > 0 ? (Math.log10(r.rate) / Math.log10(rates[rates.length - 1].rate)) * 100 : 0;
+          return (
+            <div key={r.t} className="flex items-center gap-2">
+              <span className={`w-10 shrink-0 text-right font-mono text-[10px] ${isNear ? "font-bold text-[var(--accent)]" : "text-[var(--muted)]"}`}>{r.t}°</span>
+              <div className="h-4 flex-1 overflow-hidden rounded-md" style={{ background: "var(--border)" }}>
+                <div className="h-full rounded-md transition-all duration-300"
+                  style={{
+                    width: `${Math.max(pct, 1.5)}%`,
+                    background: isNear ? "var(--accent)" : `color-mix(in srgb, var(--accent) ${20 + (r.t / 80) * 40}%, transparent)`,
+                  }} />
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      
+      {/* Visualisasi partikel collision — makin cepat saat suhu tinggi */}
+      <svg viewBox="0 0 320 100" className="w-full" role="img" aria-label="Partikel bertumbukan, kecepatan meningkat dengan suhu">
+        <defs>
+          <filter id="glow-rate">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        
+        {/* Partikel A (biru) — 6 partikel bergerak horizontal */}
+        {[20, 60, 100, 140, 180, 220].map((x, i) => {
+          const speed = 0.8 + (temp / 80) * 1.5; // 0.8s-2.3s tergantung suhu
+          return (
+            <g key={`a-${i}`}>
+              <circle cx={x} cy={35 + (i % 3) * 10} r="5" fill="#5b8def" opacity="0.85" filter="url(#glow-rate)">
+                <animate attributeName="cx" values={`${x};${x + 80};${x}`} dur={`${speed}s`} repeatCount="indefinite" begin={`${i * 0.15}s`} />
+              </circle>
+              <text x={x} y={38 + (i % 3) * 10} textAnchor="middle" fontSize="6" fill="#fff" fontFamily="monospace">A</text>
+            </g>
+          );
+        })}
+        
+        {/* Partikel B (merah) — 5 partikel bergerak dari kanan */}
+        {[280, 240, 200, 160, 120].map((x, i) => {
+          const speed = 0.9 + (temp / 80) * 1.4;
+          return (
+            <g key={`b-${i}`}>
+              <circle cx={x} cy={65 + (i % 2) * 12} r="5" fill="#e05c7a" opacity="0.85" filter="url(#glow-rate)">
+                <animate attributeName="cx" values={`${x};${x - 75};${x}`} dur={`${speed}s`} repeatCount="indefinite" begin={`${i * 0.18}s`} />
+              </circle>
+              <text x={x} y={68 + (i % 2) * 12} textAnchor="middle" fontSize="6" fill="#fff" fontFamily="monospace">B</text>
+            </g>
+          );
+        })}
+        
+        {/* Spark collision di tengah */}
+        {[140, 180].map((x, i) => (
+          <circle key={`spark-${i}`} cx={x} cy={50} r="3" fill="#ffb454" opacity="0">
+            <animate attributeName="opacity" values="0;0.9;0" dur={`${1.2 - (temp / 80) * 0.6}s`} repeatCount="indefinite" begin={`${i * 0.6}s`} />
+            <animate attributeName="r" values="2;5;2" dur={`${1.2 - (temp / 80) * 0.6}s`} repeatCount="indefinite" begin={`${i * 0.6}s`} />
+          </circle>
+        ))}
+        
+        <text x="160" y="96" textAnchor="middle" fontSize="8" fill="var(--muted)" fontFamily="monospace">
+          {temp}°C — partikel bergerak {temp > 40 ? "cepat" : temp > 20 ? "sedang" : "lambat"}
+        </text>
+      </svg>
     </div>
   );
 }
