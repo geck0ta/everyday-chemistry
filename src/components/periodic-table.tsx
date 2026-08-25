@@ -211,9 +211,9 @@ export default function PeriodicTable() {
         <div
           className="grid gap-1"
           style={{
-            gridTemplateColumns: "repeat(18, minmax(26px, 1fr))",
+            gridTemplateColumns: "repeat(18, minmax(24px, 1fr))",
             gridTemplateRows: "repeat(10, auto)",
-            minWidth: 540,
+            minWidth: 420, // tetap bisa scroll di 360 jika perlu, tapi lebih kecil
           }}
           role="grid"
           aria-label="Tabel periodik unsur"
