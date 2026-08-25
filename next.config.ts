@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   output: isPages ? "export" : undefined,
   basePath: isPages ? `/${repo}` : "",
   images: { unoptimized: true },
+  env: {
+    NEXT_PUBLIC_BASE_PATH: isPages ? `/${repo}` : "",
+  },
 };
 
 export default nextConfig;

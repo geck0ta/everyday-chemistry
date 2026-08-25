@@ -1,11 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FlaskConical, Atom, Thermometer } from "lucide-react";
+import { FlaskConical, Atom, Thermometer, Shield, Zap } from "lucide-react";
 import {
   titrationCurve, equilibriumConcentrations, reactionRate,
   type TitrationPoint,
 } from "@/lib/simulation";
+import {
+  BUFFER_SYSTEMS, bufferPh, addAcidToBuffer, addBaseToBuffer, bufferCurve,
+  type BufferSystem,
+} from "@/lib/buffer-sim";
+import { ELECTRODES, voltaCell, type Electrode } from "@/lib/volta-sim";
 
 /* ---------- Grafik SVG dengan animasi menggambar ---------- */
 function LineChart({ data, xLabel, yLabel, marker, markerLabel, color = "var(--accent)", keyAnim }: {
@@ -105,10 +110,12 @@ function Slider({ label, value, min, max, step, unit, onChange }: {
   );
 }
 
-type SimMode = "titration" | "equilibrium" | "rate";
+type SimMode = "titration" | "buffer" | "volta" | "equilibrium" | "rate";
 
 const MODES: { id: SimMode; label: string; icon: typeof FlaskConical }[] = [
   { id: "titration", label: "Titrasi Asam–Basa", icon: FlaskConical },
+  { id: "buffer", label: "Larutan Penyangga", icon: Shield },
+  { id: "volta", label: "Sel Volta", icon: Zap },
   { id: "equilibrium", label: "Kesetimbangan", icon: Atom },
   { id: "rate", label: "Laju Reaksi & Suhu", icon: Thermometer },
 ];
@@ -138,6 +145,19 @@ export default function Simulation() {
   const [temp, setTemp] = useState(25);
   const [ea, setEa] = useState(50);
 
+  // buffer
+  const [bufSystem, setBufSystem] = useState<BufferSystem>(BUFFER_SYSTEMS[0]);
+  const [bufAcid, setBufAcid] = useState(0.1);
+  const [bufBase, setBufBase] = useState(0.1);
+  const [added, setAdded] = useState<"asam" | "basa">("basa");
+  const [mol, setMol] = useState(0.01);
+
+  // sel volta
+  const [anodeId, setAnodeId] = useState("Zn");
+  const [cathodeId, setCathodeId] = useState("Cu");
+  const [concA, setConcA] = useState(1);
+  const [concC, setConcC] = useState(1);
+
   /* perhitungan */
   const titration = useMemo(() => {
     const curve = titrationCurve({ acidConc, acidVol, baseConc });
@@ -161,6 +181,20 @@ export default function Simulation() {
     const atTemp = reactionRate(temp, ea);
     return { temps, rates, atTemp };
   }, [temp, ea]);
+
+  const buffer = useMemo(() => {
+    const initial = bufferPh({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase });
+    const result = added === "asam"
+      ? addAcidToBuffer({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase, molH: mol })
+      : addBaseToBuffer({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase, molOh: mol });
+    const curve = bufferCurve({ system: bufSystem, acidConc: bufAcid, baseConc: bufBase, maxMol: Math.max(bufAcid * 1.5, 0.05) });
+    return { initial, result, curve };
+  }, [bufSystem, bufAcid, bufBase, added, mol]);
+
+  const volta = useMemo(
+    () => voltaCell({ anodeId, cathodeId, concAnode: concA, concCathode: concC }),
+    [anodeId, cathodeId, concA, concC]
+  );
 
   // animKey: memicu redraw kurva saat parameter berubah
   const animKey = `${acidConc}-${acidVol}-${baseConc}`;
@@ -211,6 +245,77 @@ export default function Simulation() {
               </p>
             </>
           )}
+          {mode === "buffer" && (
+            <>
+              <h3 className="text-sm font-semibold">Larutan penyangga</h3>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Sistem penyangga</label>
+                <select
+                  value={bufSystem.id}
+                  onChange={(e) => setBufSystem(BUFFER_SYSTEMS.find((b) => b.id === e.target.value)!)}
+                  className="glass-input w-full rounded-xl px-3 py-2 text-sm outline-none"
+                  aria-label="Sistem penyangga"
+                >
+                  {BUFFER_SYSTEMS.map((b) => (
+                    <option key={b.id} value={b.id}>{b.label} (pKa {b.pka})</option>
+                  ))}
+                </select>
+              </div>
+              <Slider label={`[${bufSystem.acidLabel.split(" ")[0]}] asam`} value={bufAcid} min={0.02} max={0.5} step={0.01} unit="M" onChange={setBufAcid} />
+              <Slider label={`[${bufSystem.baseLabel.split(" ")[0]}] basa`} value={bufBase} min={0.02} max={0.5} step={0.01} unit="M" onChange={setBufBase} />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAdded("asam")}
+                  className={`flex-1 rounded-full px-3 py-1.5 text-xs transition-colors ${added === "asam" ? "font-semibold" : ""}`}
+                  style={added === "asam"
+                    ? { background: "#d14d6b", color: "white" }
+                    : { border: "1px solid var(--border)", color: "var(--muted)" }}
+                >
+                  + HCl (asam)
+                </button>
+                <button
+                  onClick={() => setAdded("basa")}
+                  className={`flex-1 rounded-full px-3 py-1.5 text-xs transition-colors ${added === "basa" ? "font-semibold" : ""}`}
+                  style={added === "basa"
+                    ? { background: "#3d76d9", color: "white" }
+                    : { border: "1px solid var(--border)", color: "var(--muted)" }}
+                >
+                  + NaOH (basa)
+                </button>
+              </div>
+              <Slider label={added === "asam" ? "mol H⁺ ditambahkan" : "mol OH⁻ ditambahkan"} value={mol} min={0} max={Math.max(bufAcid, bufBase) * 1.5} step={0.005} unit="mol" onChange={setMol} />
+              <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
+                {buffer.result.ok ? (
+                  <>pH awal <b>{buffer.initial.ph.toFixed(2)}</b> → sekarang <b>{buffer.result.ph!.toFixed(2)}</b>.
+                    {" "}Pergeseran cuma <b>{Math.abs(buffer.result.ph! - buffer.initial.ph).toFixed(2)}</b> — itulah kerja penyangga!</>
+                ) : (
+                  <><b>Kapasitas habis!</b> {buffer.result.note}</>
+                )}
+              </p>
+              <p className="text-[11px] leading-relaxed text-[var(--muted)]">{bufSystem.everyday}</p>
+            </>
+          )}
+          {mode === "volta" && (
+            <>
+              <h3 className="text-sm font-semibold">Sel volta</h3>
+              <ElectrodeSelect label="Elektroda negatif (anoda)" value={anodeId} onChange={(v) => {
+                setAnodeId(v);
+                if (v === cathodeId) setCathodeId(v === "Zn" ? "Cu" : "Zn");
+              }} exclude={cathodeId} />
+              <ElectrodeSelect label="Elektroda positif (katoda)" value={cathodeId} onChange={(v) => {
+                setCathodeId(v);
+                if (v === anodeId) setAnodeId(v === "Zn" ? "Cu" : "Zn");
+              }} exclude={anodeId} />
+              <Slider label="[ion] anoda" value={concA} min={0.01} max={2} step={0.01} unit="M" onChange={setConcA} />
+              <Slider label="[ion] katoda" value={concC} min={0.01} max={2} step={0.01} unit="M" onChange={setConcC} />
+              <p className="rounded-xl px-3.5 py-2.5 text-xs leading-relaxed" style={{ background: "var(--accent-soft)" }}>
+                E°sel = <b>{volta.eCell > 0 ? "+" : ""}{volta.eCell.toFixed(2)} V</b>
+                {volta.eCell > 0
+                  ? ` — reaksi spontan, elektron mengalir dari ${volta.anode.symbol} ke ${volta.cathode.symbol}.`
+                  : " — arah reaksi terbalik; tukar posisi elektrodanya."}
+              </p>
+            </>
+          )}
           {mode === "equilibrium" && (
             <>
               <h3 className="text-sm font-semibold">H₂ + I₂ ⇌ 2HI</h3>
@@ -244,6 +349,18 @@ export default function Simulation() {
               addedVol={addedVol}
               currentPh={titration.currentPh}
               animKey={animKey}
+            />
+          )}
+          {mode === "buffer" && (
+            <BufferVisual system={bufSystem} curve={buffer.curve} currentPh={buffer.result.ph ?? buffer.initial.ph} mol={mol} added={added} />
+          )}
+          {mode === "volta" && (
+            <VoltaVisual
+              anode={volta.anode}
+              cathode={volta.cathode}
+              eCell={volta.eCell}
+              electronFlow={volta.electronFlow}
+              spontan={volta.spontan}
             />
           )}
           {mode === "equilibrium" && (
@@ -488,6 +605,185 @@ function RateVisual({ temp, ea, rates, atTemp }: {
         })}
         <p className="pt-1 text-center text-[10px] text-[var(--muted)]">skala logaritmik — perhatikan loncatan di ujung kanan!</p>
       </div>
+    </div>
+  );
+}
+
+/* ================= LARUTAN PENYANGGA ================= */
+function BufferVisual({ system, curve, currentPh, mol, added }: {
+  system: BufferSystem;
+  curve: { mol: number; ph: number; phase: string }[];
+  currentPh: number;
+  mol: number;
+  added: "asam" | "basa";
+}) {
+  const color = phColor(currentPh);
+  const W = 560, H = 300, PAD = 44;
+  const xMax = Math.max(curve[curve.length - 1].mol, 0.01);
+  const yMin = Math.min(...curve.map((p) => p.ph), 0);
+  const yMax = Math.max(...curve.map((p) => p.ph));
+  const sx = (x: number) => PAD + (x / xMax) * (W - PAD - 12);
+  const sy = (y: number) => H - PAD - ((y - yMin) / (yMax - yMin || 1)) * (H - PAD - 16);
+  const path = curve.map((p, i) => `${i ? "L" : "M"} ${sx(p.mol)} ${sy(p.ph)}`).join(" ");
+  // posisi titik sekarang pada kurva
+  let cx = sx(0), cy = sy(curve[0].ph);
+  for (const p of curve) if (p.mol <= mol) { cx = sx(p.mol); cy = sy(p.ph); }
+
+  return (
+    <div>
+      {/* gelas kimia dengan larutan berubah warna */}
+      <svg viewBox="0 0 320 110" className="w-full" role="img" aria-label={`Gelas kimia larutan penyangga ${system.label}, pH ${currentPh.toFixed(2)}`}>
+        <path d="M100 20 L104 96 Q105 102 112 102 L208 102 Q215 102 216 96 L220 20 Z"
+          fill="none" stroke="var(--muted)" strokeWidth="1.8" />
+        <rect x={106} y={40} width={108} height={58} rx={4} fill={color} opacity="0.45">
+          <animate attributeName="opacity" values="0.38;0.52;0.38" dur="2.6s" repeatCount="indefinite" />
+        </rect>
+        {/* tetesan asam/basa yang jatuh */}
+        {mol > 0 && (
+          <circle cx={added === "asam" ? 130 : 190} cy="30" r="2.5" fill={added === "asam" ? "#e05c7a" : "#5b8def"}>
+            <animate attributeName="cy" values="28;44" dur="0.7s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;0" dur="0.7s" repeatCount="indefinite" />
+          </circle>
+        )}
+        {/* perisai kecil = simbol penyangga */}
+        <g transform="translate(252,30)" opacity="0.75">
+          <path d="M0 -10 L9 -6 V3 Q0 12 -0 12 Q-0 12 -9 3 V-6 Z" fill="none" stroke={color} strokeWidth="1.5" />
+          <text x="14" y="4" fontSize="9" fill="var(--muted)">pH tahan!</text>
+        </g>
+        <text x="160" y="34" textAnchor="middle" fontSize="13" fontWeight="bold" fill={color} fontFamily="monospace">
+          {currentPh.toFixed(2)}
+        </text>
+      </svg>
+
+      {/* kurva */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Kurva titrasi penyangga terhadap basa kuat">
+        {[0, 3, 7, 11, 14].map((t) => (
+          <g key={t}>
+            <line x1={PAD} y1={sy(t)} x2={W - 12} y2={sy(t)} stroke="var(--border)" strokeWidth="0.7" />
+            <text x={PAD - 6} y={sy(t) + 3} textAnchor="end" fontSize="9" fill="var(--muted)" fontFamily="monospace">{t}</text>
+          </g>
+        ))}
+        <line x1={PAD} y1={sy(system.pka)} x2={W - 12} y2={sy(system.pka)} stroke="#34e0a1" strokeWidth="0.8" strokeDasharray="3 4" opacity="0.55" />
+        <text x={W - 16} y={sy(system.pka) - 5} textAnchor="end" fontSize="8.5" fill="#34e0a1" fontFamily="monospace">pKa {system.pka}</text>
+        <line x1={PAD} y1={H - PAD} x2={W - 12} y2={H - PAD} stroke="var(--muted)" strokeWidth="1" />
+        <line x1={PAD} y1="14" x2={PAD} y2={H - PAD} stroke="var(--muted)" strokeWidth="1" />
+        <text x={(W + PAD) / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">mol OH⁻ ditambahkan</text>
+        <text x="12" y={(H - PAD + 20) / 2} fontSize="10" fill="var(--muted)" transform={`rotate(-90 12 ${(H - PAD + 20) / 2})`} textAnchor="middle">pH</text>
+        <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round"
+          style={{ filter: "drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 35%, transparent))" }} />
+        <circle cx={cx} cy={cy} r="6" fill="#e05c7a" stroke="white" strokeWidth="1.5">
+          <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite" />
+        </circle>
+      </svg>
+      <p className="mt-1 text-center text-[11px] text-[var(--muted)]">
+        Daerah datar di pKa = zona kerja penyangga · titik merah = kondisi sekarang
+      </p>
+    </div>
+  );
+}
+
+/* ================= SEL VOLTA ================= */
+function ElectrodeSelect({ label, value, onChange, exclude }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  exclude: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="glass-input w-full rounded-xl px-3 py-2 text-sm outline-none"
+      >
+        {ELECTRODES.filter((e) => e.symbol !== exclude).map((e) => (
+          <option key={e.symbol} value={e.symbol}>{e.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function VoltaVisual({ anode, cathode, eCell, electronFlow, spontan }: {
+  anode: Electrode;
+  cathode: Electrode;
+  eCell: number;
+  electronFlow: number;
+  spontan: boolean;
+}) {
+  const wireY = 22;
+  return (
+    <div>
+      <svg viewBox="0 0 320 210" className="w-full" role="img"
+        aria-label={`Sel volta ${anode.symbol}-${cathode.symbol}, E sel ${eCell.toFixed(2)} volt`}>
+        {/* kawat + voltmeter */}
+        <path d={`M70 ${wireY} H140 M180 ${wireY} H250`} stroke="var(--muted)" strokeWidth="1.6" />
+        <rect x="140" y={wireY - 12} width="40" height="24" rx="5" fill="none" stroke={spontan ? "#34e0a1" : "var(--muted)"} strokeWidth="1.6" />
+        <text x="160" y={wireY + 4} textAnchor="middle" fontSize="10" fontWeight="bold"
+          fill={spontan ? "#34e0a1" : "var(--muted)"} fontFamily="monospace">
+          {Math.abs(eCell).toFixed(2)}V
+        </text>
+        {/* elektron mengalir anoda → katoda (kiri ke kanan jika anoda di kiri) */}
+        {spontan && [0, 1, 2].map((i) => {
+          const fromX = 70, toX = 140;
+          const rev = anode.name > cathode.name; // urutan tampilan stabil untuk arah aliran elektron
+          const x1 = rev ? 180 : fromX, x2 = rev ? 250 : toX;
+          return (
+            <circle key={i} r="3" fill="#e05c7a">
+              <animate attributeName="cx" values={`${x1};${x2}`} dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+              <animate attributeName="cy" values={`${wireY};${wireY}`} dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+            </circle>
+          );
+        })}
+        {/* gelas kiri (anoda) */}
+        <path d="M40 60 L44 170 Q45 176 52 176 L108 176 Q115 176 116 170 L120 60 Z" fill="none" stroke="var(--muted)" strokeWidth="1.6" />
+        <rect x={47} y={90} width={66} height={82} rx={3} fill={anode.solutionColor} opacity="0.4" />
+        {/* pelat anoda */}
+        <rect x={72} y={48} width={16} height={112} rx={2} fill={anode.color} opacity="0.85" />
+        <text x={80} y={200} textAnchor="middle" fontSize="11" fontWeight="bold" fill={anode.color} fontFamily="monospace">{anode.symbol}</text>
+        <text x={80} y={36} textAnchor="middle" fontSize="8.5" fill="var(--muted)">anoda (−)</text>
+        {/* jembatan garam */}
+        <path d="M118 92 Q160 74 202 92" fill="none" stroke="var(--muted)" strokeWidth="7" strokeLinecap="round" opacity="0.55" />
+        <path d="M118 92 Q160 74 202 92" fill="none" stroke="var(--surface-solid)" strokeWidth="3.5" strokeLinecap="round" />
+        <text x="160" y="66" textAnchor="middle" fontSize="8.5" fill="var(--muted)">jembatan garam</text>
+        {/* gelas kanan (katoda) */}
+        <path d="M200 60 L204 170 Q205 176 212 176 L268 176 Q275 176 276 170 L280 60 Z" fill="none" stroke="var(--muted)" strokeWidth="1.6" />
+        <rect x={207} y={90} width={66} height={82} rx={3} fill={cathode.solutionColor} opacity="0.4" />
+        <rect x={232} y={48} width={16} height={112} rx={2} fill={cathode.color} opacity="0.85" />
+        <text x={240} y={200} textAnchor="middle" fontSize="11" fontWeight="bold" fill={cathode.color} fontFamily="monospace">{cathode.symbol}</text>
+        <text x={240} y={36} textAnchor="middle" fontSize="8.5" fill="var(--muted)">katoda (+)</text>
+        {/* gelembung di anoda saat spontan */}
+        {spontan && [64, 80, 96].map((x, i) => (
+          <circle key={x} cx={x} cy="150" r="1.8" fill={anode.solutionColor}>
+            <animate attributeName="cy" values="152;128" dur={`${1 + i * 0.3}s`} repeatCount="indefinite" begin={`${i * 0.3}s`} />
+            <animate attributeName="opacity" values="0;0.9;0" dur={`${1 + i * 0.3}s`} repeatCount="indefinite" begin={`${i * 0.3}s`} />
+          </circle>
+        ))}
+        {/* notasi sel */}
+        <text x="160" y="196" textAnchor="middle" fontSize="9" fill="var(--muted)" fontFamily="monospace" opacity="0.85">
+          {anode.symbol} | {anode.ion} ‖ {cathode.ion} | {cathode.symbol}
+        </text>
+        {/* reaksi setengah sel */}
+        <text x={80} y={186} textAnchor="middle" fontSize="7.5" fill="currentColor" opacity="0.6" fontFamily="monospace">{anode.halfReaction}</text>
+        <text x={240} y={186} textAnchor="middle" fontSize="7.5" fill="currentColor" opacity="0.6" fontFamily="monospace">{cathode.halfReaction}</text>
+      </svg>
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <div className="rounded-xl px-3 py-2.5" style={{ background: `${anode.color}14`, border: `1px solid ${anode.color}33` }}>
+          <p className="font-mono text-[10px]" style={{ color: anode.color }}>{anode.name} — oksidasi</p>
+          <p className="mt-1 font-mono text-[10.5px] leading-relaxed">{anode.halfReaction}</p>
+        </div>
+        <div className="rounded-xl px-3 py-2.5" style={{ background: `${cathode.color}14`, border: `1px solid ${cathode.color}33` }}>
+          <p className="font-mono text-[10px]" style={{ color: cathode.color }}>{cathode.name} — reduksi</p>
+          <p className="mt-1 font-mono text-[10.5px] leading-relaxed">{cathode.halfReaction}</p>
+        </div>
+      </div>
+      <p className="mt-2 text-center text-[11px] text-[var(--muted)]">
+        {electronFlow > 0
+          ? `${electronFlow.toFixed(2)} elektron lewat per reaksi — ubah konsentrasi ion dan lihat tegangannya (Nernst).`
+          : "Reaksi tidak spontan pada susunan ini."}
+      </p>
     </div>
   );
 }

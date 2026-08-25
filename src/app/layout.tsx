@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import Nav from "@/components/nav";
+import ServiceWorkerRegister from "@/components/sw-register";
 import "./globals.css";
 
 const displayFont = Space_Grotesk({
@@ -24,6 +25,15 @@ export const metadata: Metadata = {
   description:
     "Kalkulator kimia dengan langkah penyelesaian, 23 fenomena sehari-hari, simulasi, database zat, dan lab virtual.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://everyday-chemistry.vercel.app"),
+  manifest: "manifest.json",
+  icons: {
+    icon: [
+      { url: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "icons/icon-192.png" }],
+  },
+  applicationName: "Everyday Chemistry",
   openGraph: {
     type: "website",
     locale: "id_ID",
@@ -65,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="ambient" aria-hidden />
         <Nav />
         {children}
+        <ServiceWorkerRegister />
       </body>
     </html>
   );
